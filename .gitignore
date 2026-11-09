@@ -15,3 +15,7 @@ dsh-secret-broker/data/
 
 # Extraction and acceptance artefacts kept out of the packages themselves.
 node_modules/.dsh-harness-runtime.json
+
+# Assistant workspace metadata (session notes, scratch state); not part of the
+# plugin sources. Each package ignores its own copy as well.
+.workbuddy/
