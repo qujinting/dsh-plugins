@@ -10,16 +10,75 @@
  * @module dsh-bridge/policy
  */
 
-/** Defaults are the behaviour the README promises. Every field is optional. */
+/**
+ * Defaults are the behaviour the README promises. Every field is optional.
+ *
+ * The deny list is the load-bearing one. `service.call` runs whatever method a
+ * caller names on whatever service it names, so the default posture is that the
+ * reachable set is *inert*: reading, listing, querying. Anything that can end a
+ * process, rewrite a plugin row, touch the filesystem, or hand back a stored
+ * credential is closed, because those are exactly the capabilities that made a
+ * generic call gateway dangerous in the first place.
+ *
+ * The three entries this list once had — `credentials`, `configEditor`,
+ * `dshBridge` — closed the front door and left the side ones open: `loader` can
+ * add, retarget, and remove plugin rows (and its `commit()` persists them to the
+ * profile patch), `shell` and `subprocess` run programs, `fs` writes files.
+ */
 export const DEFAULTS = {
 	timeoutMs: 15_000,
 	auditLimit: 200,
 	confirm: ['config.edit', 'plugin.restart', 'app.exit'],
-	// `configEditor` is denied for `service.call` on purpose: reaching it that way
-	// would bypass the confirmation gate and write to the user's profile patch.
-	serviceDeny: ['credentials', 'configEditor', 'dshBridge'],
+	serviceDeny: [
+		// Secrets and configuration ownership.
+		'credentials',
+		'configEditor',
+		'dshBridge',
+		// Plugin lifecycle and persistence.
+		'loader',
+		'hmr',
+		'pluginManager',
+		// Process execution.
+		'shell',
+		'subprocess',
+		'terminals',
+		// Filesystem.
+		'fs',
+		'workspaceFiles',
+		'workspaceChanges',
+		'worktrees',
+		'workspaceRegistry',
+		// Confinement.
+		'sandbox',
+		'sandboxPolicy',
+		// Stores that hold user data and keys.
+		'settings',
+		'storage',
+		'storageDomain',
+		'spillStore',
+		'deepseekAccount',
+		// Transport and remote control.
+		'webServer',
+		'remoteAccess',
+		'liveshareShares',
+	],
+	// Non-empty means "allowlist mode": only these names are reachable, whatever
+	// the deny list says. An operator who wants three services should not have to
+	// reason about thirty.
+	serviceAllow: [],
+	// Method-level second gate, keyed by service name (exact or prefix, `*` for
+	// every service). It exists so that re-enabling a denied service — for example
+	// `loader` for one deployment — does not re-open its mutators with it.
+	methodDeny: {
+		'*': ['apply', 'bind', 'call', 'constructor', 'dispose', 'exec', 'exit', 'import', 'kill', 'restart', 'spawn', 'stop', 'terminate'],
+		loader: ['commit', 'create', 'ensureId', 'remove', 'resolveGroup', 'stop', 'update'],
+		hmr: ['invalidate', 'runExclusive', 'update'],
+	},
 	breakerThreshold: 5,
 	breakerCooldownMs: 30_000,
+	// Opt-in: when set, every call is also appended to this file as one JSON line,
+	// because the in-memory ring dies with the activation that explains it.
+	auditFile: undefined,
 }
 
 /**
@@ -38,9 +97,45 @@ export function readOptions(config) {
 		auditLimit: positiveInt(source.auditLimit) ?? DEFAULTS.auditLimit,
 		confirm: stringList(source.confirm) ?? [...DEFAULTS.confirm],
 		serviceDeny: stringList(source.serviceDeny) ?? [...DEFAULTS.serviceDeny],
+		serviceAllow: stringList(source.serviceAllow) ?? [...DEFAULTS.serviceAllow],
+		methodDeny: mergeMethodRules(source.methodDeny),
+		auditFile: nonEmptyString(source.auditFile),
 		breakerThreshold: positiveInt(source.breakerThreshold) ?? DEFAULTS.breakerThreshold,
 		breakerCooldownMs: positiveInt(source.breakerCooldownMs) ?? DEFAULTS.breakerCooldownMs,
 	}
+}
+
+/**
+ * Test one service name against a pattern list.
+ *
+ * A pattern matches itself and everything below it: `loader` also covers
+ * `loader.entries`, which is how cordis names nested provisions.
+ * @param patterns - service names or prefixes.
+ * @param name - service name from the request.
+ * @returns `true` when the name is covered.
+ */
+export function deniedBy(patterns, name) {
+	return patterns.some(pattern => name === pattern || name.startsWith(`${pattern}.`))
+}
+
+/**
+ * Collect the method names a service is not allowed to expose.
+ *
+ * `*` applies to every service; a key equal to the service name or a prefix of
+ * it adds that service's own rules on top.
+ * @param rules - `methodDeny` from the resolved options.
+ * @param name - service name from the request.
+ * @returns the union of matching method names.
+ */
+export function methodRulesFor(rules, name) {
+	const banned = new Set(rules['*'] ?? [])
+	for (const [pattern, methods] of Object.entries(rules)) {
+		if (pattern === '*') continue
+		if (name === pattern || name.startsWith(`${pattern}.`)) {
+			for (const method of methods) banned.add(method)
+		}
+	}
+	return banned
 }
 
 /**
@@ -174,4 +269,63 @@ function stringList(value) {
 	if (!Array.isArray(value)) return undefined
 	if (!value.every(item => typeof item === 'string' && item.length > 0)) return undefined
 	return [...value]
+}
+
+/**
+ * A non-empty string, or `undefined`.
+ * @param value - raw config field.
+ * @returns the string, or `undefined` when absent or unusable.
+ */
+function nonEmptyString(value) {
+	return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * Validate the method-deny table into a copy with array values.
+ *
+ * A malformed table falls back to the defaults rather than throwing during
+ * activation: a plugin that cannot start because of one typo is worse than a
+ * plugin that starts with its documented policy.
+ * @param value - raw config field.
+ * @returns the normalized table, or `undefined` when unusable.
+ */
+function methodRules(value) {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+	const rules = {}
+	for (const [pattern, methods] of Object.entries(value)) {
+		if (pattern.length === 0) return undefined
+		const list = stringList(methods)
+		if (list === undefined) return undefined
+		rules[pattern] = list
+	}
+	return rules
+}
+
+/**
+ * Layer the configured method rules over the defaults.
+ *
+ * A deployment that adds `{ db: ['drop'] }` very much still wants the `*` rules,
+ * and would not guess that writing one service key silently dropped them. So the
+ * defaults stay, a configured key replaces (not appends to) the default entry of
+ * the same name, and only an explicit `'*'` key can replace the global rules.
+ * @param value - raw config field.
+ * @returns the merged table.
+ */
+function mergeMethodRules(value) {
+	const rules = cloneRules(DEFAULTS.methodDeny)
+	const configured = methodRules(value)
+	if (configured === undefined) return rules
+	for (const [pattern, methods] of Object.entries(configured)) rules[pattern] = methods
+	return rules
+}
+
+/**
+ * Deep-copy the method-deny table so a mutating caller cannot change the next instance.
+ * @param rules - the default table.
+ * @returns a detached copy.
+ */
+function cloneRules(rules) {
+	const copy = {}
+	for (const [pattern, methods] of Object.entries(rules)) copy[pattern] = [...methods]
+	return copy
 }

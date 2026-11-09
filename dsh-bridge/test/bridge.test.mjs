@@ -66,7 +66,7 @@ function harness({ services = {}, config = {}, entries = [] } = {}) {
 test('the plugin provides one service with a versioned, listable contract', () => {
 	const { bridge } = harness()
 	assert.equal(pluginName, 'dsh-bridge')
-	assert.equal(bridge.version, 1)
+	assert.equal(bridge.version, 2)
 
 	const names = bridge.list().map(item => item.name).sort()
 	assert.deepEqual(names, [

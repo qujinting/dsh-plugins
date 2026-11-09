@@ -12,8 +12,8 @@
 
 import { isDeepStrictEqual } from 'node:util'
 
-import { coded } from './policy.js'
-import { summarize } from './serialize.js'
+import { coded, deniedBy, methodRulesFor } from './policy.js'
+import { portableArgs, summarize } from './serialize.js'
 
 /**
  * Build the capability table for one host context.
@@ -24,14 +24,39 @@ export function createCapabilities(host) {
 	const { ctx, options, defer } = host
 
 	/**
-	 * Reject a service name the deployment excluded.
+	 * Decide whether a service may be reached through the bridge at all.
+	 *
+	 * Two independent gates, and the deny list always wins:
+	 * - `serviceDeny` closes services that are destructive or hold credentials.
+	 * - `serviceAllow`, when non-empty, is an allowlist: everything else is out,
+	 *   so a deployment can shrink the surface to the three services it needs.
 	 * @param serviceName - service name from the request.
 	 */
-	function enforceServiceDeny(serviceName) {
-		const hit = options.serviceDeny.some(
-			pattern => serviceName === pattern || serviceName.startsWith(`${pattern}.`),
-		)
-		if (hit) throw coded('service-denied', `service "${serviceName}" is denied by dsh-bridge`)
+	function enforceReachable(serviceName) {
+		if (deniedBy(options.serviceDeny, serviceName)) {
+			throw coded('service-denied', `service "${serviceName}" is denied by dsh-bridge`)
+		}
+		if (options.serviceAllow.length > 0 && !deniedBy(options.serviceAllow, serviceName)) {
+			throw coded(
+				'service-not-allowed',
+				`service "${serviceName}" is not on dsh-bridge's allowlist`,
+			)
+		}
+	}
+
+	/**
+	 * Reject a method the deployment closed by name.
+	 *
+	 * The service-level gate alone is not enough: un-denying `loader` for one
+	 * deployment hands back `update`, `remove`, and `import` with it, and those
+	 * are the calls that write the profile and load arbitrary modules.
+	 * @param serviceName - service name from the request.
+	 * @param method - method name from the request.
+	 */
+	function enforceMethod(serviceName, method) {
+		if (methodRulesFor(options.methodDeny, serviceName).has(method)) {
+			throw coded('method-denied', `method "${method}" on "${serviceName}" is denied by dsh-bridge`)
+		}
 	}
 
 	/**
@@ -58,19 +83,21 @@ export function createCapabilities(host) {
 		{
 			name: 'service.list',
 			risk: 'low',
-			summary: 'List registered service names and whether each one resolves right now.',
+			summary: 'List registered service names, whether each resolves, and whether the bridge will reach it.',
 			run: () => {
 				const props = ctx.reflect?.props ?? {}
 				return Object.keys(props)
 					.filter(key => props[key]?.type === 'service')
 					.sort()
-					.map(key => ({
-						name: key,
-						available: ctx.get(key) !== undefined,
-						denied: options.serviceDeny.some(
-							pattern => key === pattern || key.startsWith(`${pattern}.`),
-						),
-					}))
+					.map(key => {
+						const denied = deniedBy(options.serviceDeny, key)
+						return {
+							name: key,
+							available: ctx.get(key) !== undefined,
+							denied,
+							allowed: !denied && (options.serviceAllow.length === 0 || deniedBy(options.serviceAllow, key)),
+						}
+					})
 			},
 		},
 		{
@@ -79,7 +106,7 @@ export function createCapabilities(host) {
 			summary: 'List one service\'s own keys and the methods on its prototype chain.',
 			run: params => {
 				const serviceName = requireString(params, 'service')
-				enforceServiceDeny(serviceName)
+				enforceReachable(serviceName)
 				const value = requireService(serviceName)
 
 				const keys = Object.keys(value)
@@ -100,12 +127,13 @@ export function createCapabilities(host) {
 		{
 			name: 'service.call',
 			risk: 'medium',
-			summary: 'Call one method on one service and return a snapshot of its result.',
+			summary: 'Call one method on one service and return a snapshot of its result; arguments must be plain data.',
 			run: async params => {
 				const serviceName = requireString(params, 'service')
 				const method = requireString(params, 'method')
-				const args = Array.isArray(params.args) ? params.args : []
-				enforceServiceDeny(serviceName)
+				enforceReachable(serviceName)
+				enforceMethod(serviceName, method)
+				const args = portableArgs(params.args)
 
 				const target = requireService(serviceName)
 				const fn = target[method]

@@ -16,14 +16,15 @@
  *    all. Adding a capability is a code change here, not a new coupling in
  *    every consumer.
  * 3. Policy around every call (`policy.js`): a confirmation gate for the
- *    destructive ones, a timeout, and a circuit breaker, so one broken service
- *    cannot pin or spam the host.
+ *    destructive ones, a deny/allow set for services, a method gate for the
+ *    services a deployment deliberately re-opens, a timeout, and a circuit
+ *    breaker, so one broken service cannot pin or spam the host.
  * 4. Configuration writes through the host's own editor, with the one rule the
  *    editor cannot express by itself: a field nobody touched and that still
  *    equals its inherited value is not copied into the user's patch, so bundle
  *    upgrades keep reaching it.
- * 5. An audit ring, so "who restarted this plugin at 14:02" is answerable
- *    without reading the session log.
+ * 5. An audit ring (and an opt-in JSONL file), so "who restarted this plugin at
+ *    14:02" is answerable without reading the session log.
  *
  * Two deliberate limits:
  *
@@ -32,11 +33,12 @@
  *   unreachable from a plugin by design. `plugin.restart` reloads a *plugin*
  *   through `fiber.restart()`, which is the mechanism HMR and the config editor
  *   already use.
- * - Values crossing the boundary are snapshots (`serialize.js`), never live
- *   service objects, so a consumer cannot keep a handle on host internals.
- *   Field names that promise a secret — `apiKey`, `token`, `password` — are
- *   replaced rather than carried, because a bridge that can call anything will
- *   eventually call something that holds one.
+ * - Values crossing the boundary are snapshots (`serialize.js`), and arguments
+ *   must be plain data: a consumer keeps no handle on host internals and cannot
+ *   hand one back in. Field names that promise a secret — `apiKey`, `token`,
+ *   `password` — and strings shaped like one are replaced rather than carried,
+ *   because a bridge that can call anything will eventually call something that
+ *   holds one.
  *
  * Everything is dependency-free: no `@deepseek-ai/*` import, because a
  * profile-installed plugin cannot resolve those without a build-time runtime
@@ -45,8 +47,28 @@
  * @module dsh-bridge
  */
 
+import { appendFile } from 'node:fs'
+
 import { createCapabilities } from './capabilities.js'
 import { Breaker, coded, describeError, readOptions, withTimeout } from './policy.js'
+
+/**
+ * Error codes that mean "this call was refused", never "the host is failing".
+ *
+ * The breaker exists to stop an agent from retrying a broken service in a loop.
+ * A misspelled method or a denied service is the caller's bug, and the host is
+ * perfectly healthy, so it must not spend the capability's availability on it.
+ */
+const GATE_CODES = new Set([
+	'bad-request',
+	'breaker-open',
+	'confirmation-required',
+	'method-denied',
+	'no-such-method',
+	'no-such-plugin',
+	'service-denied',
+	'service-not-allowed',
+])
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'dsh-bridge'
@@ -76,11 +98,19 @@ export function apply(ctx, config) {
 
 	/**
 	 * Record one call.
+	 *
+	 * The ring is for `audit()` during this activation; the file, when
+	 * configured, is what survives the reload the audit trail most needs to
+	 * explain. A failed append is swallowed: the bridge must not fail a call
+	 * because the disk is full or the path rotated away.
 	 * @param row - the finished result envelope.
 	 */
 	function record(row) {
 		audit.push(row)
 		if (audit.length > options.auditLimit) audit.splice(0, audit.length - options.auditLimit)
+		if (options.auditFile !== undefined) {
+			appendFile(options.auditFile, `${JSON.stringify(row)}\n`, 'utf8', () => {})
+		}
 	}
 
 	/**
@@ -143,17 +173,28 @@ export function apply(ctx, config) {
 			breaker.noteSuccess(requested)
 			return finish({ ok: true, value })
 		} catch (error) {
-			breaker.noteFailure(requested)
+			// A refusal is not a fault. Counting policy rejections would let five
+			// mistyped service names shut the capability for the whole cooldown,
+			// and would keep re-arming the window while a caller probes — so only
+			// failures that actually crossed into the host open the breaker.
+			if (!GATE_CODES.has(error?.code)) breaker.noteFailure(requested)
 			return finish({ ok: false, error: describeError(error) })
 		}
 	}
 
 	const api = {
-		/** Contract version; consumers compare it before trusting a capability name. */
-		version: 1,
+		/**
+		 * Contract version; consumers compare it before trusting a capability name.
+		 *
+		 * 2 added the `serviceAllow` / `methodDeny` gates, made caller arguments
+		 * plain-data only, and closed the default reachable set to inert services.
+		 */
+		version: 2,
 		invoke,
 		/** The capability table, for a consumer's own startup self-check. */
 		list: () => capabilities.map(({ name: capability, risk, summary }) => ({ name: capability, risk, summary })),
+		/** The resolved policy, so a consumer can see what this deployment allows. */
+		policy: () => structuredClone({ ...options, serviceDeny: [...options.serviceDeny], serviceAllow: [...options.serviceAllow], confirm: [...options.confirm] }),
 		/** The recent audit trail, newest last. */
 		audit: () => audit.slice(),
 		/** Convenience for `service.call`, so the common case needs no params object. */

@@ -1,10 +1,16 @@
 # dsh-bridge 的能力行。用户级覆盖写在 profile 的 cordis.patch.yml，不要改本文件。
 #
 # `confirm` 里的能力必须由调用方显式传 `{ confirm: true }`，否则只返回
-# confirmation-required，不做任何动作。`serviceDeny` 是硬黑名单，命中即拒。
+# confirmation-required，不做任何动作。
 #
-# configEditor 被挡在 service.call 之外是有意的：绕过确认关卡直接写用户的
-# profile patch，是这个插件最不该开的门。
+# `serviceDeny` 是硬黑名单，命中即拒：默认只留下"惰性"服务（列表、查询、读结构），
+# 进程执行（shell/subprocess/terminals）、文件系统（fs/workspace*）、插件生命周期
+# （loader/hmr/pluginManager）、密钥与用户数据（credentials/settings/storage）全部关闭。
+# 需要放开某一项时在 profile 里覆写本行的 config，而不是删掉整个列表。
+#
+# `serviceAllow` 非空即进入白名单模式：只有列出的服务可达，黑名单仍然优先。
+# `methodDeny` 是方法级第二道闸，按服务名（精确或前缀，`*` 表示所有服务）配置；
+# 放开 loader 这类服务时靠它挡回 update/create/remove/import。
 - insert:
     - id: dsh-bridge
       name: 'dsh-bridge'
@@ -19,5 +25,54 @@
           - credentials
           - configEditor
           - dshBridge
+          - loader
+          - hmr
+          - pluginManager
+          - shell
+          - subprocess
+          - terminals
+          - fs
+          - workspaceFiles
+          - workspaceChanges
+          - worktrees
+          - workspaceRegistry
+          - sandbox
+          - sandboxPolicy
+          - settings
+          - storage
+          - storageDomain
+          - spillStore
+          - deepseekAccount
+          - webServer
+          - remoteAccess
+          - liveshareShares
+        serviceAllow: []
+        methodDeny:
+          '*':
+            - apply
+            - bind
+            - call
+            - constructor
+            - dispose
+            - exec
+            - exit
+            - import
+            - kill
+            - restart
+            - spawn
+            - stop
+            - terminate
+          loader:
+            - commit
+            - create
+            - ensureId
+            - remove
+            - resolveGroup
+            - stop
+            - update
+          hmr:
+            - invalidate
+            - runExclusive
+            - update
         breakerThreshold: 5
         breakerCooldownMs: 30000
