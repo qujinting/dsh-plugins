@@ -1,4 +1,4 @@
-# dsh-theme · 深潜主题
+# dsh-theme-orbital · 深潜主题
 
 [English](README.md) | 简体中文
 
@@ -39,18 +39,18 @@
 ```bash
 # 1) 完全退出 DSH 桌面端（desktop profile 的包管理要求宿主不在运行）
 # 2) 安装（link 到本仓库）
-dsh plugin --profile desktop add "link:D:/project/qujinting/dsh-plugins/dsh-theme"
+dsh plugin --profile desktop add "link:D:/project/qujinting/dsh-plugins/dsh-theme-orbital"
 # 3) 重新打开 DSH
 ```
 
-也可以直接改 `$DSH_HOME/profiles/desktop/package.json`：把 `dsh-theme` 加进
+也可以直接改 `$DSH_HOME/profiles/desktop/package.json`：把 `dsh-theme-orbital` 加进
 `dependencies`（`link:` 到本目录）和 `dsh.profile.bundles`，再在该 profile 目录跑一次
 `pnpm install`。
 
 卸载：
 
 ```bash
-dsh plugin --profile desktop remove dsh-theme
+dsh plugin --profile desktop remove dsh-theme-orbital
 ```
 
 > **会改什么、不会改什么**：插件只经由 profile 的 Loader 行与 Web 索引注入生效，
@@ -58,11 +58,11 @@ dsh plugin --profile desktop remove dsh-theme
 
 ## 配置
 
-`cordis.patch.yml` 的默认值（可在自己的 profile patch 里按 `id: dsh-theme` 覆盖）：
+`cordis.patch.yml` 的默认值（可在自己的 profile patch 里按 `id: dsh-theme-orbital` 覆盖）：
 
 ```yaml
-- id: dsh-theme
-  name: 'dsh-theme'
+- id: dsh-theme-orbital
+  name: 'dsh-theme-orbital'
   config:
     enabled: true          # 总开关；false 时宿主一行都不注入
     animation: hud         # hud | fade | none
@@ -183,7 +183,7 @@ __dshTheme.enable()
 | `GET /api/dsh-theme/video/intro`、`video/bg` | 进场影片与循环壁纸（支持 `Range`，浏览器起播必需） |
 
 失败不会白屏：控制器与客户端半区都整段 `try/catch`，异常写进
-`localStorage['dsh-theme.last-error']`；没有影片时遮罩另有 CSS 兜底（4s 自动淡出），
+`localStorage['dsh-theme-orbital.last-error']`；没有影片时遮罩另有 CSS 兜底（4s 自动淡出），
 影片路径则由 JS 的 6s 起播超时 + 定格/淡出收尾兜底，且遮罩全程 `pointer-events: none`。
 
 ## 设计语言（DeepSeek Blue · 深潜）

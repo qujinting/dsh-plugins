@@ -54,11 +54,11 @@ check('requires React exactly once', requires.filter((name) => name === 'react')
 
 // --- behaviour hooks --------------------------------------------------------
 
-check('finds the host stylesheet by marker', source.includes('/* dsh-theme'))
+check('finds the host stylesheet by marker', source.includes('/* dsh-theme-orbital'))
 check('reads the revision marker', source.includes('rev:([^*]+)'))
 check('refreshes through the composed route', source.includes('/injected.css'))
-check('persists the switch locally', source.includes("'dsh-theme.enabled'"))
-check('records failures for the error report', source.includes("'dsh-theme.last-error'"))
+check('persists the switch locally', source.includes("'dsh-theme-orbital.enabled'"))
+check('records failures for the error report', source.includes("'dsh-theme-orbital.last-error'"))
 check('mounts the sidebar control', source.includes("'sidebar.footer.action'"))
 check('exposes the diagnostics handle', source.includes('globalThis.__dshTheme ='))
 check('replay reuses the boot controller', source.includes('__dshThemePlayVeil'))
@@ -77,7 +77,7 @@ check('removes the forced tokens on disable', source.includes('clearForcedScheme
 check('removes the wallpaper on disable', source.includes('removeBackgroundVideo'))
 check('disable blanks the injected stylesheet instead of guessing tokens', source.includes('disabled */'))
 check('respects reduced motion through the controller', bootSource.includes('prefers-reduced-motion'))
-check('controller supports cold-start-only playback', bootSource.includes("'dsh-theme.played'"))
+check('controller supports cold-start-only playback', bootSource.includes("'dsh-theme-orbital.played'"))
 check('controller never throws into the page', /try\s*\{[\s\S]*catch/u.test(bootSource))
 check('controller removes the veil on failure', bootSource.includes('removeVeil(veilElement())'))
 check('controller drives the Windows caption probe variable', bootSource.includes('--dsw-specific-sidebar-fill'))

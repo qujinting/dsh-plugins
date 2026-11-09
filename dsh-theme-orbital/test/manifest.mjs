@@ -21,7 +21,7 @@ check('exports the bundle patch', manifest.exports?.['./cordis.patch.yml'] !== u
 check('declares the bundle patch', manifest.dsh?.bundle?.patch === './cordis.patch.yml')
 check('declares a web client half', manifest.dsh?.client?.platform === 'web')
 check('client half injects the slots service', Array.isArray(manifest.dsh?.client?.inject) && manifest.dsh.client.inject.includes('slots'))
-check('package name matches the module id used by lib/client.js', manifest.name === 'dsh-theme')
+check('package name matches the module id used by lib/client.js', manifest.name === 'dsh-theme-orbital')
 
 for (const file of [
 	'lib/index.js',
@@ -32,7 +32,7 @@ for (const file of [
 	'theme/boot.js',
 	'cordis.patch.yml',
 	'README.md',
-	'README.zh.md',
+	'README.zh-CN.md',
 	'LICENSE',
 	'icon.svg',
 ]) {
@@ -40,8 +40,8 @@ for (const file of [
 }
 
 const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8')
-check('bundle patch inserts one row', /- id: dsh-theme/u.test(patch))
-check('bundle patch names this package', /name: 'dsh-theme'/u.test(patch))
+check('bundle patch inserts one row', /- id: dsh-theme-orbital/u.test(patch))
+check('bundle patch names this package', /name: 'dsh-theme-orbital'/u.test(patch))
 for (const key of ['enabled', 'animation', 'playOn', 'durationMs', 'holdMs', 'introTailMs', 'titleBar', 'scanlines', 'grid', 'glow']) {
 	check(`bundle patch documents config.${key}`, new RegExp(`^\\s*${key}:`, 'mu').test(patch))
 }

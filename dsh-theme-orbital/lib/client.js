@@ -1,5 +1,5 @@
 /**
- * dsh-theme — browser half.
+ * dsh-theme-orbital — browser half.
  *
  * A hand-written `__ModuleLoader__` factory (no build step). It requires only
  * React, which the shell seeds in its frozen platform module table; everything
@@ -21,7 +21,7 @@
  */
 
 window.__ModuleLoader__.load({
-	id: 'dsh-theme',
+	id: 'dsh-theme-orbital',
 	factory: (require) => {
 		var module = { exports: {} }
 		var exports = module.exports
@@ -36,12 +36,12 @@ window.__ModuleLoader__.load({
 
 		// ----------------------------------------------------------- constants
 
-		const PACKAGE = 'dsh-theme'
+		const PACKAGE = 'dsh-theme-orbital'
 		const API = '/api/dsh-theme'
-		const MARKER = '/* dsh-theme'
-		const MARKER_PATTERN = /\/\* dsh-theme rev:([^*]+) \*\//
-		const STORAGE_KEY = 'dsh-theme.enabled'
-		const ERROR_KEY = 'dsh-theme.last-error'
+		const MARKER = '/* dsh-theme-orbital'
+		const MARKER_PATTERN = /\/\* dsh-theme-orbital rev:([^*]+) \*\//
+		const STORAGE_KEY = 'dsh-theme-orbital.enabled'
+		const ERROR_KEY = 'dsh-theme-orbital.last-error'
 		const VERSION = 1
 
 		// ------------------------------------------------------------- storage
@@ -655,7 +655,7 @@ window.__ModuleLoader__.load({
 						)
 					}
 				} catch (error) {
-					ctx.logger?.warn?.(`dsh-theme: sidebar control unavailable: ${error?.message ?? error}`)
+					ctx.logger?.warn?.(`dsh-theme-orbital: sidebar control unavailable: ${error?.message ?? error}`)
 				}
 
 				ctx.effect(
@@ -668,12 +668,12 @@ window.__ModuleLoader__.load({
 						document.documentElement.removeAttribute('data-dsh-theme')
 						document.documentElement.removeAttribute('data-dsh-theme-wallpaper')
 					},
-					'dsh-theme: client lifecycle',
+					'dsh-theme-orbital: client lifecycle',
 				)
 			} catch (error) {
 				state.lastError = String(error)
 				recordFailure(error)
-				ctx.logger?.warn?.(`dsh-theme: client half failed: ${error?.message ?? error}`)
+				ctx.logger?.warn?.(`dsh-theme-orbital: client half failed: ${error?.message ?? error}`)
 			}
 		}
 

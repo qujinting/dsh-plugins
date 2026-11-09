@@ -1,4 +1,4 @@
-# dsh-theme · DeepSeek Blue
+# dsh-theme-orbital · DeepSeek Blue
 
 English | [简体中文](README.zh-CN.md)
 
@@ -41,15 +41,15 @@ Nothing in the DSH installation is modified; uninstalling restores the stock UI.
 ```bash
 # 1) Fully quit the DSH desktop app (the desktop profile refuses package changes while it runs)
 # 2) Install (link to this directory)
-dsh plugin --profile desktop add "link:D:/project/qujinting/dsh-plugins/dsh-theme"
+dsh plugin --profile desktop add "link:D:/project/qujinting/dsh-plugins/dsh-theme-orbital"
 # 3) Start DSH again
 ```
 
-Equivalently, add `dsh-theme` to `dependencies` (`link:` to this directory)
+Equivalently, add `dsh-theme-orbital` to `dependencies` (`link:` to this directory)
 and to `dsh.profile.bundles` in `$DSH_HOME/profiles/desktop/package.json`, then run
 `pnpm install` in that profile.
 
-Remove it with `dsh plugin --profile desktop remove dsh-theme`.
+Remove it with `dsh plugin --profile desktop remove dsh-theme-orbital`.
 
 The plug-in only contributes a Loader row plus index injections. It never writes
 into the DSH installation, never touches the Electron shell, and never touches
@@ -57,12 +57,12 @@ session data.
 
 ## Configuration
 
-Defaults from `cordis.patch.yml` (override by targeting `id: dsh-theme` in your
+Defaults from `cordis.patch.yml` (override by targeting `id: dsh-theme-orbital` in your
 own profile patch):
 
 ```yaml
-- id: dsh-theme
-  name: 'dsh-theme'
+- id: dsh-theme-orbital
+  name: 'dsh-theme-orbital'
   config:
     enabled: true          # master switch; false injects nothing
     animation: hud         # hud | fade | none
@@ -199,7 +199,7 @@ Loopback-only host routes:
 | `GET /api/dsh-theme/video/intro`, `video/bg` | Intro film and wallpaper (byte ranges supported — required by the browser media stack) |
 
 Failures cannot white-screen the app: both halves wrap their work in `try/catch`,
-record the error in `localStorage['dsh-theme.last-error']`, and the veil has a
+record the error in `localStorage['dsh-theme-orbital.last-error']`, and the veil has a
 CSS-only 4-second fail-safe plus `pointer-events: none` for its whole lifetime.
 
 ## Design language (DeepSeek Blue)

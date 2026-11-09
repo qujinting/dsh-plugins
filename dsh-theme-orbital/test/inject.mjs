@@ -66,7 +66,7 @@ const { apply } = await import('../lib/index.js')
 
 	const style = table[1].text
 	check('style row starts with the revision marker', style.startsWith(STYLE_MARKER))
-	check('style row has a parseable revision', /^\/\* dsh-theme rev:[^*]+ \*\//u.test(style))
+	check('style row has a parseable revision', /^\/\* dsh-theme-orbital rev:[^*]+ \*\//u.test(style))
 	check('style row themes both schemes', style.includes('html body{') && style.includes('html body[data-ds-dark-theme]{'))
 	check('style row outranks app stylesheets', style.includes('html body') && style.includes(':root:root'))
 	check('alias tokens are forced over the inline values', style.includes('--dsw-alias-bg-base:#050A14 !important'))

@@ -45,7 +45,7 @@ function call(request) {
 	check('status answers 200', result.status === 200)
 	check('status is JSON', /application\/json/u.test(result.headers['content-type']))
 	const body = JSON.parse(result.body)
-	check('status names the plugin', body.name === 'dsh-theme')
+	check('status names the plugin', body.name === 'dsh-theme-orbital')
 	check('status reports the config', body.animation === 'hud' && body.durationMs === 1500)
 	check('status reports the title-bar mode', body.titleBar === 'hide')
 	check('status reports the film tail trim', body.introTailMs === 1500)
@@ -80,7 +80,7 @@ for (const [suffix, type] of [
 	const first = call(mockRequest({ url: '/api/dsh-theme/injected.css' }))
 	check('injected.css answers 200', first.status === 200)
 	check('injected.css is CSS', /text\/css/u.test(first.headers['content-type'] ?? ''))
-	check('injected.css carries the marker', first.body.startsWith('/* dsh-theme'))
+	check('injected.css carries the marker', first.body.startsWith('/* dsh-theme-orbital'))
 	check('injected.css contains the token layer', first.body.includes('--dsw-alias-bg-base:#050A14 !important'))
 	check('injected.css contains the authored sheet', first.body.includes('#dsh-theme-veil'))
 	const revision = /rev:([^*]+) \*\//u.exec(first.body)[1]

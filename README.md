@@ -14,7 +14,7 @@ Harness is built on [cordis](https://github.com/cordisjs/cordis) and takes "ever
 | [`dsh-chrome-cdp`](dsh-chrome-cdp/) | Registers a native `chrome_cdp` tool, an embedded skill, and a routing prompt section, driving the machine's own Chrome over CDP | The agent needs to actually *look* at a page — measure boxes, take a screenshot — with no Playwright, no Puppeteer, and without touching your running browser |
 | [`dsh-desktop-pet`](dsh-desktop-pet/) | A Live2D desktop pet in the Web GUI: draggable, follows the cursor, reacts to clicks, changes motion with the session phase | You want the Harness to have a face. Ships with DS Whale Girl (8 motion groups, 44 expressions) |
 | [`dsh-secret-broker`](dsh-secret-broker/) | Enter secrets as key → value in the UI; a session only ever sees the *key name*, and the value is injected into a child process at the moment a command runs | You are tired of pasting tokens into conversations that get logged, indexed, and backed up |
-| [`dsh-theme`](dsh-theme/) | A DeepSeek Blue theme: single-hue, lightness-layered deep-sea interface, 4K intro film, looping character wallpaper | The default look is not yours, and you want it to be |
+| [`dsh-theme-orbital`](dsh-theme-orbital/) | A DeepSeek Blue theme: single-hue, lightness-layered deep-sea interface, 4K intro film, looping character wallpaper | The default look is not yours, and you want it to be |
 | [`dsh-web-search`](dsh-web-search/) | A `ctx.web` search provider that searches with the model you currently have selected, via gateway-native search tools | The built-in provider hardcodes a DeepSeek model and spends DeepSeek quota; this one follows your selection and runs on your gateway |
 
 ## Install

@@ -1,5 +1,5 @@
 /**
- * dsh-theme — host half.
+ * dsh-theme-orbital — host half.
  *
  * Two contributions, both mounted from the bundle row:
  *
@@ -25,7 +25,7 @@ import { createReadStream, readFileSync, statSync } from 'node:fs'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const name = 'dsh-theme'
+export const name = 'dsh-theme-orbital'
 
 /** Route prefix claimed from the host web server. */
 export const ROUTE_BASE = '/api/dsh-theme'
@@ -36,7 +36,7 @@ export const ROUTE_BASE = '/api/dsh-theme'
  * desktop window (which collects injections only once per launch) still picks
  * up stylesheet edits on refresh.
  */
-export const STYLE_MARKER = '/* dsh-theme'
+export const STYLE_MARKER = '/* dsh-theme-orbital'
 
 /** Files the browser half is allowed to fetch, by route suffix. */
 const SERVED_FILES = new Map([
@@ -561,7 +561,7 @@ export function handleRoute(options, request, response) {
 export function apply(ctx, config) {
 	const options = readOptions(config)
 	if (!options.enabled) {
-		ctx.logger?.info?.('dsh-theme: disabled by config; injecting nothing')
+		ctx.logger?.info?.('dsh-theme-orbital: disabled by config; injecting nothing')
 		return
 	}
 
@@ -569,13 +569,13 @@ export function apply(ctx, config) {
 		try {
 			const rows = composeInjections(options)
 			if (rows.length === 0) {
-				ctx.logger?.warn?.('dsh-theme: theme/palette.json is missing or invalid; index left untouched')
+				ctx.logger?.warn?.('dsh-theme-orbital: theme/palette.json is missing or invalid; index left untouched')
 				return
 			}
 			table.push(...rows)
 		} catch (error) {
 			/* A throwing listener would break the whole index render. */
-			ctx.logger?.warn?.(`dsh-theme: index injection skipped: ${error?.message ?? error}`)
+			ctx.logger?.warn?.(`dsh-theme-orbital: index injection skipped: ${error?.message ?? error}`)
 		}
 	})
 
@@ -589,14 +589,14 @@ export function apply(ctx, config) {
 						try {
 							handleRoute(options, request, response)
 						} catch (error) {
-							ctx.logger?.warn?.(`dsh-theme: route failed: ${error?.message ?? error}`)
+							ctx.logger?.warn?.(`dsh-theme-orbital: route failed: ${error?.message ?? error}`)
 							if (!response.headersSent) sendJson(response, 500, { error: 'theme route failed' })
 							else response.end()
 						}
 					},
 				}),
-			'dsh-theme: routes',
+			'dsh-theme-orbital: routes',
 		)
-		ctx.logger?.info?.(`dsh-theme: assets served from ${THEME_DIR}`)
+		ctx.logger?.info?.(`dsh-theme-orbital: assets served from ${THEME_DIR}`)
 	})
 }

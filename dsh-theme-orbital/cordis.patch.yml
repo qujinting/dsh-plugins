@@ -1,4 +1,4 @@
-# dsh-theme bundle layer.
+# dsh-theme-orbital bundle layer.
 #
 # One row mounts both halves of the plugin:
 #
@@ -15,8 +15,8 @@
 # deployment can override any value below.
 
 - insert:
-    - id: dsh-theme
-      name: 'dsh-theme'
+    - id: dsh-theme-orbital
+      name: 'dsh-theme-orbital'
       config:
         # Master switch. When false the host injects nothing at all.
         enabled: true

@@ -1,5 +1,5 @@
 {
-  "name": "dsh-theme",
+  "name": "dsh-theme-orbital",
   "version": "0.2.0",
   "description": "DSH 深潜主题（DeepSeek Blue）：单一品牌蓝、按明度分层的深空界面，含 4K 入场动画与会话壁纸。",
   "icon": "./icon.svg",
@@ -31,7 +31,7 @@
     "videos",
     "cordis.patch.yml",
     "README.md",
-    "README.zh.md",
+    "README.zh-CN.md",
     "LICENSE",
     "icon.svg"
   ],

@@ -1,5 +1,5 @@
 /*
- * dsh-theme — 入场遮罩控制器。
+ * dsh-theme-orbital — 入场遮罩控制器。
  *
  * 由宿主作为内联 <script> 注入到 body 末尾（在遮罩标记之后、应用挂载之前）。
  * 职责：
@@ -16,8 +16,8 @@
 (function () {
 	'use strict'
 
-	var PLAYED_KEY = 'dsh-theme.played'
-	var ERROR_KEY = 'dsh-theme.last-error'
+	var PLAYED_KEY = 'dsh-theme-orbital.played'
+	var ERROR_KEY = 'dsh-theme-orbital.last-error'
 
 	function bootConfig() {
 		var cfg = globalThis.__DSH_THEME_BOOT__

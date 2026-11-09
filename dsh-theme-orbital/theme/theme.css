@@ -1,5 +1,5 @@
 /* =============================================================================
- * dsh-theme — DeepSeek Blue（深潜）主题样式
+ * dsh-theme-orbital — DeepSeek Blue（深潜）主题样式
  *
  * 这里只放「结构 / 质感 / 动效」；颜色一律来自 theme/palette.json：
  *   宿主在 index 里先注入 `body{--dsw-alias-*: … !important}`（压过 ui-layout
