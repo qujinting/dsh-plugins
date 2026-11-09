@@ -1,49 +1,28 @@
 /**
  * dsh-web-search - browser half.
  *
- * The Host half exposes one settings section; this half renders the card that
- * edits it. The harness changed how that works, so both shapes live here and
- * the running harness picks one by which service it has:
- *
- * - dsh 0.1.7: settings ARE the plugin's Config entry. The plugin manager page
- *   declares plugins.row.config, hands the row's form (accepted values plus one
- *   mutate action) to whatever registered for its key, and asks for a one-line
- *   summary while the row is listed - so this half registers ModernCard and
- *   needs no service beyond slots. dsh 0.2.0-rc.2 keeps this model, including
- *   the configForms service and the slot key, so ModernCard serves it too.
- * - dsh 0.1.5: the settings service owns plugin sections and hands the tab a
- *   bound scope. This half registers LegacyCard under settings.plugin.item,
- *   keyed by the namespace the Host installed, and reads the section through
- *   ctx.settingsScope.
- *
- * Each registration waits for the service only its own harness has, so exactly
- * one of them ever runs. Nothing crosses versions at runtime, and the client
- * bundle purity rule still holds: the card reaches the outside world only
- * through cordis services plus the modules the shell seeds into its baseline
- * module table.
+ * The Host half exposes one settings entry; this half renders the page that
+ * edits it. On dsh 0.2.x settings ARE the plugin's Config entry: the plugin
+ * manager page declares `plugins.row.config`, hands the row's form (the entry's
+ * accepted values, its user layer, and one mutate action) to whatever registered
+ * for its key `<package>#<row id>`, and asks for a one-line summary while the
+ * row is listed. So this half registers one card, keyed by this bundle and row,
+ * and needs no service beyond slots and configForms.
  *
  * The card does not invent a look; it uses the deployment's own.
  *
  * There is no declarative card contract to opt into: the slot documentation is
- * explicit that a card draws its own internals and the tab only decides which
- * namespaces to dispatch and stacks what comes back, and the chrome the
- * built-in cards share (PluginCard plus the card-form field kit) is internal to
- * @deepseek-ai/dsh-client-ui-settings-plugins - its client bundle exports only
- * apply and inject, so no other package can import it. What IS shared is the
- * baseline module table the web shell builds (PLATFORM_MODULES): react, cordis,
- * the client store, the slots service, the dock kit, and
- * @deepseek-ai/dsh-client-ui-primitives. This bundle requires primitives from
- * that table - the same instance the built-in cards render - for the two parts
- * that carry behaviour (the unsaved Tag and the header chevron), and writes the
+ * explicit that a card draws its own internals and the page only decides which
+ * keys to dispatch. What IS shared is the baseline module table the web shell
+ * builds (PLATFORM_MODULES): react, cordis, the client store, the slots service,
+ * the dock kit, and @deepseek-ai/dsh-client-ui-primitives. This bundle requires
+ * primitives from that table - the same instance the built-in cards render - for
+ * the two controls that carry behaviour (the Tag and the Switch), and writes the
  * remaining chrome from the deployment's own theme tokens (--dsw-alias-*),
  * following the shipped card and field rules one for one.
  *
- * The card keeps the shape those cards use: an li whose header button collapses
- * the body, collapsed by default, collapsing again after a successful save and
- * staying open when one fails. Registration joins the card ledger only once the
- * cards already there have registered, so this one stacks after them rather
- * than above them; it is not pinned to the very end, and a card another plugin
- * registers later still follows it.
+ * The page owns the title, icon, and crumb, so the card renders only the fields
+ * and the save row, and reports accept-vs-reject from `mutate` as a boolean.
  *
  * The bundle is written by hand in the loader format every plugin bundle uses
  * (window.__ModuleLoader__.load({ id, factory })): running it only registers the
@@ -61,33 +40,15 @@ window.__ModuleLoader__.load({
 		// the very instance the built-in settings cards render with.
 		const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
 
-		/**
-		 * The collapse chevron, under whichever name the deployment ships.
-		 *
-		 * The icon family was renamed: dsh 0.1.5 exported it by size
-		 * (`IconChevronDownOutline14`), while 0.2.0 exports weight variants
-		 * (`IconChevronDownOutlineMedium` / `IconChevronDownOutlineRegular`) and no
-		 * longer defines the sized name at all. Handing `undefined` to
-		 * React.createElement throws, so resolve once here and render nothing in the
-		 * (unreachable) case where none of them exist.
-		 */
-		const ChevronDown = primitives.IconChevronDownOutline14
-			?? primitives.IconChevronDownOutlineMedium
-			?? primitives.IconChevronDownOutlineRegular;
-
-		/** Settings namespace the 0.1.5 settings service serves; must equal the Host plugin's. */
-		const NAMESPACE = 'dsh-web-search';
-		/** This package's name: what the 0.1.7 plugin page keys a bundle by. */
+		/** This package's name: what the plugin page keys a bundle by. */
 		const BUNDLE = 'dsh-web-search';
-		/** The row this bundle's patch inserts; on 0.1.7 it is also the settings entry id. */
+		/** The row this bundle's patch inserts; it is also the settings entry id. */
 		const ROW_ID = 'dsh-web-search';
-		/** The two slots, one per settings model. */
-		const LEGACY_SLOT = 'settings.plugin.item';
+		/** The slot a row's configuration page is dispatched through. */
 		const MODERN_SLOT = 'plugins.row.config';
-		/** On 0.1.7 a row's configuration is keyed by its bundle and row. */
+		/** A row's configuration is keyed by its bundle and row. */
 		const MODERN_KEY = BUNDLE + '#' + ROW_ID;
-		/** Card title and summary: a card owns its own chrome, so the copy lives here. */
-		const TITLE = '网页搜索（当前模型）';
+		/** The one-line summary the page shows while the row is listed. */
 		const DESCRIPTION = '用当前会话选中的模型调用网关自带搜索工具联网检索。';
 		/** Field id prefix: stable, so a label can point at its own control. */
 		const ID_PREFIX = 'dsh-web-search-';
@@ -125,25 +86,13 @@ window.__ModuleLoader__.load({
 		 * The card's own stylesheet, injected the way the shipped bundles inject
 		 * theirs (one style element keyed by data-plugin-css). Every value either
 		 * reads a deployment theme token or repeats a geometry the shipped card and
-		 * field sheets already use - card radius 16px, header 14px/16px, body and
-		 * footer divided by a .5px border-l2 rule, control height 34px - so the card
-		 * follows the deployment through light, dark, and any future retheme instead
-		 * of carrying a palette of its own.
+		 * field sheets already use - field rows divided by a .5px border-l2 rule,
+		 * control height 34px, 8px radii - so the card follows the deployment
+		 * through light, dark, and any future retheme instead of carrying a palette
+		 * of its own.
 		 */
 		const CSS_ID = 'dsh-web-search/card.css';
 		const CSS = [
-			'.dswwsc-card{border:.5px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-bg-layer-3);border-radius:16px;list-style:none;transition:border-color .16s,background .16s}',
-			'.dswwsc-card:hover{border-color:var(--dsw-alias-label-dimmed)}',
-			'.dswwsc-cardOpen{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}',
-			'.dswwsc-header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}',
-			'.dswwsc-header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}',
-			'.dswwsc-headText{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}',
-			'.dswwsc-name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}',
-			'.dswwsc-description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}',
-			'.dswwsc-chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}',
-			'.dswwsc-chevronOpen{transform:rotate(180deg)}',
-			'.dswwsc-pending{flex:none}',
-			'.dswwsc-body{border-top:.5px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}',
 			'.dswwsc-readOnly{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}',
 			'.dswwsc-field{flex-direction:column;gap:6px;padding:12px 0;display:flex}',
 			'.dswwsc-field+.dswwsc-field{border-top:.5px solid var(--dsw-alias-border-l2)}',
@@ -183,16 +132,6 @@ window.__ModuleLoader__.load({
 
 		/** Class names the stylesheet above defines. */
 		const C = {
-			card: 'dswwsc-card',
-			cardOpen: 'dswwsc-cardOpen',
-			header: 'dswwsc-header',
-			headText: 'dswwsc-headText',
-			name: 'dswwsc-name',
-			description: 'dswwsc-description',
-			pending: 'dswwsc-pending',
-			chevron: 'dswwsc-chevron',
-			chevronOpen: 'dswwsc-chevronOpen',
-			body: 'dswwsc-body',
 			readOnly: 'dswwsc-readOnly',
 			field: 'dswwsc-field',
 			head: 'dswwsc-head',
@@ -333,115 +272,7 @@ window.__ModuleLoader__.load({
 				React.createElement('p', { className: C.hint }, field.hint));
 		}
 		/**
-		 * The header button: title, summary, an unsaved marker, and the chevron -
-		 * the deployment's own Tag and chevron glyph, as the shipped cards use them.
-		 * @param open - whether the body is showing.
-		 * @param unsaved - whether the card holds edits a save would write.
-		 * @param onToggle - flip the body.
-		 * @returns the header element.
-		 */
-		function renderHeader(open, unsaved, onToggle) {
-			return React.createElement('button', {
-				type: 'button',
-				className: C.header,
-				'aria-expanded': open,
-				'aria-label': (open ? '收起: ' : '展开: ') + TITLE,
-				onClick: onToggle,
-			},
-				React.createElement('span', { className: C.headText },
-					React.createElement('span', { className: C.name }, TITLE),
-					React.createElement('span', { className: C.description }, DESCRIPTION)),
-				unsaved ? React.createElement(primitives.Tag, { tone: 'neutral', className: C.pending }, '未保存') : null,
-				ChevronDown === undefined || ChevronDown === null
-					? null
-					: React.createElement(ChevronDown, { className: cx(C.chevron, open && C.chevronOpen) }));
-		}
-
-		/**
-		 * The card: the same collapsed-header shape the deployment's own cards use,
-		 * with this provider's controls in the body and no credential field - the key
-		 * comes from the selected model's own route, so there is nothing to store.
-		 * @param props - the bound settings scope and an optional defaultOpen.
-		 * @returns the card.
-		 */
-		function WebSearchClinepassCard(props) {
-			const scope = props.scope;
-			const subscribe = React.useCallback((listener) => scope.subscribe(listener), [scope]);
-			const getSnapshot = React.useCallback(() => scope.getSnapshot(), [scope]);
-			const snapshot = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-			const section = snapshot.status === 'ready' && snapshot.value !== null && typeof snapshot.value === 'object' ? snapshot.value : {};
-			const user = snapshot.user !== null && typeof snapshot.user === 'object' ? snapshot.user : {};
-			const [open, setOpen] = React.useState(props.defaultOpen === true);
-			const [draft, setDraft] = React.useState(() => readDraft(section));
-			const [status, setStatus] = React.useState(null);
-			const [busy, setBusy] = React.useState(false);
-			const draftRef = React.useRef(draft);
-			const seedRef = React.useRef(JSON.stringify(readDraft(section)));
-			const saveStartedRef = React.useRef(false);
-			draftRef.current = draft;
-			React.useEffect(() => {
-				if (JSON.stringify(draftRef.current) !== seedRef.current) return;
-				const next = readDraft(section);
-				setDraft(next);
-				seedRef.current = JSON.stringify(next);
-			}, [section]);
-			React.useEffect(() => {
-				if (busy) { saveStartedRef.current = true; return; }
-				if (!saveStartedRef.current) return;
-				saveStartedRef.current = false;
-				if (status !== null && status.kind === 'error') return;
-				setOpen(false);
-			}, [busy, status]);
-			const dirty = JSON.stringify(draft) !== seedRef.current;
-			const failed = status !== null && status.kind === 'error';
-			const disabled = busy || snapshot.writable === false;
-			const edit = (field, value) => {
-				setStatus(null);
-				setDraft((previous) => Object.assign({}, previous, { [field.key]: field.kind === 'boolean' ? value === true : value }));
-			};
-			const run = async (ops) => {
-				if (ops.length === 0) { setStatus({ kind: 'info', text: '没有需要写入的变更。' }); return; }
-				setBusy(true);
-				setStatus(null);
-				try {
-					await scope.mutate(ops, snapshot.revision);
-					setStatus({ kind: 'ok', text: '已保存（' + ops.length + ' 项）。' });
-				} catch (error) {
-					setStatus({ kind: 'error', text: '保存失败：' + (error && error.message ? error.message : String(error)) });
-				} finally {
-					setBusy(false);
-				}
-			};
-			const save = () => run(buildOps(draft, section, user));
-			const clearAll = () => run(clearOps(user));
-			const discard = () => { setDraft(readDraft(section)); setStatus(null); };
-			const editField = (field, value) => {
-				if (field.kind === 'number') { const parsed = Number(value); edit(field, value === '' || !Number.isFinite(parsed) ? '' : parsed); return; }
-				edit(field, value);
-			};
-			const resetField = (field) => run([{ op: 'unset', path: [field.key] }]);
-			const statusText = snapshot.status === 'ready'
-				? (failed ? status.text : (busy ? '保存中…' : (status === null ? '' : status.text)))
-				: '';
-			const header = renderHeader(open, dirty || failed, () => setOpen((value) => !value));
-			if (snapshot.status !== 'ready') {
-				return React.createElement('li', { className: cx(C.card, open && C.cardOpen) }, header,
-					React.createElement('div', { className: C.body },
-						React.createElement('p', { className: C.readOnly, role: 'status' }, snapshot.status === 'loading' ? '正在读取配置…' : '本部署不对外暴露这个命名空间。')));
-			}
-			const body = React.createElement('div', { className: C.body },
-				snapshot.writable === false ? React.createElement('p', { className: C.readOnly, role: 'status' }, '只读：本部署不允许写这个命名空间。') : null,
-				FIELDS.map((field) => renderField(field, draft, Object.prototype.hasOwnProperty.call(user, field.key), disabled, editField, resetField)),
-				React.createElement('div', { className: C.footer },
-					statusText === '' ? null : React.createElement('p', { className: failed ? C.failed : C.status, role: 'status' }, statusText),
-					React.createElement('button', { type: 'button', className: C.discard, disabled, onClick: clearAll }, '全部恢复默认'),
-					React.createElement('button', { type: 'button', className: C.discard, disabled: disabled || !dirty, onClick: discard }, '放弃'),
-					React.createElement('button', { type: 'button', className: C.save, disabled: disabled || !dirty, onClick: save }, busy ? '保存中…' : '保存')));
-			return React.createElement('li', { className: cx(C.card, open && C.cardOpen) }, header, open ? body : null);
-		}
-
-		/**
-		 * The card on dsh 0.1.7, where the plugin manager page owns the entry's
+		 * The card on dsh 0.2.x, where the plugin manager page owns the entry's
 		 * configuration and hands it over: the page draws the title, icon, and crumb
 		 * itself, passes the entry's accepted values with one mutate action, and asks
 		 * for a one-line summary while the row is listed.
@@ -514,60 +345,14 @@ window.__ModuleLoader__.load({
 					React.createElement('button', { type: 'button', className: C.save, disabled: disabled || !dirty, onClick: () => run(buildOps(draft, section, user)) }, busy ? '保存中…' : '保存')));
 		}
 
-		/** Read the legacy card ledger, tolerating a slot that is not declared yet. */
-		function cardEntries(ctx) {
-			try {
-				const entries = ctx.slots.entries(LEGACY_SLOT);
-				return Array.isArray(entries) ? entries : [];
-			} catch {
-				return [];
-			}
-		}
-
-		/** Wait one macrotask, the granularity the slot ledger settles on. */
-		function nextTick() {
-			return new Promise((resolve) => { setTimeout(resolve, 0); });
-		}
-
 		/**
-		 * Register whichever card the running harness can draw.
+		 * Register the row's configuration card.
 		 *
-		 * The two settings models are told apart by the service each one provides:
-		 * dsh 0.1.7's settings client provides configForms and its plugin page
-		 * declares plugins.row.config; dsh 0.1.5's provides settingsScope and its
-		 * plugins tab declares settings.plugin.item. A harness has exactly one of
-		 * the two, so exactly one child ever runs and the other stays inert.
-		 *
-		 * The 0.1.7 path registers as soon as the page declares its slot: that page
-		 * places the row's configuration itself, so ordering is not ours to decide.
-		 *
-		 * The 0.1.5 path joins the card ledger only once the deployment's own cards
-		 * have landed. The tab renders one card per ledger entry in ledger order,
-		 * and this plugin applies before the settings plugin registers its own, so
-		 * registering immediately would put this card on top of every built-in one.
-		 * Waiting for a non-empty ledger places it after the cards that were already
-		 * there - not fixed at the end, because a card registered later still follows
-		 * it. The 2s cap keeps a deployment that ships no cards of its own from
-		 * stalling.
+		 * The registration waits for the slot the plugin manager page declares, so a
+		 * deployment that never composes that page shows no trace of this card.
 		 * @param ctx - the browser plugin context.
 		 */
 		function apply(ctx) {
-			ctx.inject(['settingsScope'], (legacyCtx) => {
-				const scope = legacyCtx.settingsScope.bind({ namespace: NAMESPACE });
-				const deadline = Date.now() + 2000;
-				const join = () => {
-					if (cardEntries(legacyCtx).length > 0 || Date.now() >= deadline) {
-						legacyCtx.slots.register({
-							name: LEGACY_SLOT,
-							key: NAMESPACE,
-							inject: () => ({ scope }),
-						}, WebSearchClinepassCard);
-						return;
-					}
-					nextTick().then(join);
-				};
-				join();
-			});
 			ctx.inject(['configForms'], (modernCtx) => {
 				modernCtx.slots.inject(MODERN_SLOT, () => modernCtx.slots.register({
 					name: MODERN_SLOT,
@@ -578,14 +363,14 @@ window.__ModuleLoader__.load({
 
 		exports.apply = apply;
 		exports.inject = ['slots'];
-		// Test-only surface: the pure helpers, the field table, and both cards, so this
-		// repository can unit-test the write planner and both registration paths without
-		// a browser.
+		// Test-only surface: the pure helpers, the field table, and the card, so this
+		// repository can unit-test the write planner and the registration path
+		// without a browser.
 		exports.__internals = {
-			NAMESPACE, BUNDLE, ROW_ID, LEGACY_SLOT, MODERN_SLOT, MODERN_KEY,
+			BUNDLE, ROW_ID, MODERN_SLOT, MODERN_KEY,
 			FIELDS, TOOLS, CSS, CSS_ID, C,
 			readDraft, buildOps, clearOps,
-			WebSearchClinepassCard, ModernCard,
+			ModernCard,
 		};
 		return module.exports;
 	},

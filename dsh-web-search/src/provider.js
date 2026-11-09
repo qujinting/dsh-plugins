@@ -47,6 +47,21 @@ export class CurrentModelSearchProvider {
 	}
 
 	/**
+	 * Whether a search made for one chat route could authenticate right now.
+	 *
+	 * The seam asks this per model step and admits `web_search` to that step only
+	 * while the answer is true, so a route this provider cannot serve hides the
+	 * tool instead of failing it after the model has committed to a call. The
+	 * `llmProvider` hint adds nothing here: this provider's route is resolved from
+	 * the session's own model selection, which is the same route the hint names.
+	 *
+	 * @returns whether the route, its endpoint, and its credential ref resolve.
+	 */
+	async ready() {
+		return this.available();
+	}
+
+	/**
 	 * Run one search through the session's currently selected model.
 	 * @param request - the seam's request: one query and an optional result cap.
 	 * @param signal - caller cancellation forwarded to the HTTP request.

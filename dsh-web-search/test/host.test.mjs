@@ -1,68 +1,109 @@
 /**
- * Host-half tests for the settings wiring that the harness changed under us.
+ * Host-half tests for the settings wiring and the seam contract this plugin
+ * implements on dsh 0.2.x.
  *
- * dsh 0.1.7 made a plugin's own Config entry its settings section and expects
- * configure({ auto: false }) for a plugin that ships its own page; dsh 0.1.5
- * installs a plugin-owned section through installSection. Both are exercised
- * here against fakes shaped exactly like each service, because a repository can
- * only run one harness at a time.
+ * The plugin's own Config entry IS its settings section on that line, so
+ * `apply()` only has to tell the settings service that the card is the plugin's
+ * own page, and then keep reading the same live config object on every search.
+ * The rest of this file pins the two seams that make the plugin visible or
+ * silently idle: provider selection (`web.searchProvider`) and the per-step
+ * `ready()` answer that decides whether `web_search` is admitted at all.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Config, normalizeConfig } from '../src/config.js';
-import { apply, readConfig } from '../src/index.js';
+import { apply, selectionWarning, selectedSearchProvider } from '../src/index.js';
+import { CurrentModelSearchProvider } from '../src/provider.js';
 
-/** A context that runs an injected child whenever the settings service is asked for. */
-function fakeCtx(settings) {
+/**
+ * A context shaped like the Host context `apply()` receives.
+ * @param options - `settings` (the service, or undefined), `searchProvider` (the
+ *   value the web seam's config holds), and `logger` to capture warnings.
+ */
+function fakeCtx(options = {}) {
 	const registered = [];
+	const listeners = [];
+	const warnings = [];
 	return {
 		registered,
+		listeners,
+		warnings,
 		fiber: { id: 'fake-fiber' },
-		inject: (services, run) => {
-			if (services.includes('settings') && settings !== undefined) run({ settings });
+		logger: options.logger ?? { warn: (message) => warnings.push(message) },
+		/** Cordis answers undefined for a service this context does not carry. */
+		get: () => undefined,
+		on: (name, listener) => {
+			listeners.push({ name, listener });
+			return () => {};
 		},
-		web: { registerSearchProvider: (provider) => { registered.push(provider); return () => {}; } },
+		inject: (services, run) => {
+			if (services.includes('settings') && options.settings !== undefined) run({ settings: options.settings });
+		},
+		web: {
+			config: options.searchProvider === undefined ? {} : { searchProvider: { get: () => options.searchProvider } },
+			registerSearchProvider: (provider) => { registered.push(provider); return () => {}; },
+		},
 	};
 }
 
-test('dsh 0.1.7: apply turns the automatic page off and reads the live entry config', async () => {
+test('apply turns the automatic page off and keeps one provider on the live config', async () => {
 	const configured = [];
-	const ctx = fakeCtx({ configure: (presentation, owner) => { configured.push({ presentation, owner }); return () => {}; } });
+	const ctx = fakeCtx({ settings: { configure: (presentation, owner) => { configured.push({ presentation, owner }); return () => {}; } } });
 	const config = Config({ tool: 'vercel:exa_search' });
 	apply(ctx, config);
 	assert.deepEqual(configured, [{ presentation: { auto: false }, owner: ctx.fiber }], 'the plugin ships its own page');
 	assert.equal(ctx.registered.length, 1);
 	const section = ctx.registered[0].resolveConfig();
-	assert.equal(section.tool, 'vercel:exa_search', 'the live reference is read, not the schema wrapper');
-	assert.equal(section.maxTokens, 8192);
-	assert.equal(section.enabled, true);
-	assert.equal(typeof section.tool, 'string', 'every field arrives as a plain value');
+	assert.equal(section, config, 'the loader keeps the entry config live, so the provider reads the same object');
+	assert.equal(normalizeConfig(section).tool, 'vercel:exa_search');
+	assert.equal(normalizeConfig(section).maxTokens, 8192);
+	assert.equal(normalizeConfig(section).enabled, true);
 });
 
-test('dsh 0.1.5: apply installs a section and prefers it over the composition entry', async () => {
-	const installed = [];
-	const ctx = fakeCtx({
-		installSection: (owner, ns, schema, config, hooks) => {
-			installed.push({ owner, ns, schema, config, hooks });
-			hooks.setSource({ tool: 'vercel:tako_search', maxTokens: 4096 });
-		},
-	});
-	apply(ctx, Config({ tool: 'vercel:exa_search' }));
-	assert.equal(installed.length, 1);
-	assert.equal(installed[0].ns, 'dsh-web-search');
-	assert.equal(installed[0].schema, Config);
-	assert.equal(installed[0].config.tool, 'vercel:exa_search', 'the old service is handed plain values, never volatile references');
-	assert.equal(typeof installed[0].config.tool, 'string');
-	const section = ctx.registered[0].resolveConfig();
-	assert.deepEqual(section, { tool: 'vercel:tako_search', maxTokens: 4096 }, 'the resolved section wins over the entry');
-});
-
-test('a harness with neither settings model still serves the composition entry', async () => {
-	const ctx = fakeCtx(undefined);
+test('a deployment without a settings service still serves the composition entry', async () => {
+	const ctx = fakeCtx({ settings: undefined });
 	apply(ctx, Config({}));
-	const section = ctx.registered[0].resolveConfig();
+	const section = normalizeConfig(ctx.registered[0].resolveConfig());
 	assert.equal(section.tool, 'vercel:perplexity_search');
 	assert.equal(section.enabled, true);
+});
+
+test('the provider reports readiness the same way it reports availability', async () => {
+	const serviceable = new CurrentModelSearchProvider(fakeCtx(), () => ({ provider: 'clinepass', model: 'm', baseURL: 'https://api.cline.bot/api/v1', api: 'openai-completions', apiKeyEnv: 'CLINEPASS_API_KEY' }));
+	assert.equal(await serviceable.ready('clinepass'), true, 'a resolvable route is admitted for the step');
+	const dead = new CurrentModelSearchProvider(fakeCtx(), () => ({ enabled: true }));
+	assert.equal(await dead.ready('clinepass'), false, 'an unresolvable route hides web_search instead of failing it');
+	assert.equal(await new CurrentModelSearchProvider(fakeCtx(), () => undefined).ready(), false, 'a throwing section cannot escape as a promise rejection');
+});
+
+test('a selection that names another provider is explained, not left silent', async () => {
+	const shadowed = fakeCtx({ searchProvider: 'deepseek-official' });
+	assert.equal(selectedSearchProvider(shadowed), 'deepseek-official');
+	const warning = selectionWarning(shadowed);
+	assert.match(warning, /web\.searchProvider is "deepseek-official"/u);
+	assert.match(warning, /registered but unused/u);
+	assert.match(warning, /searchProvider: clinepass/u, 'the fix is named in the warning');
+	assert.equal(selectionWarning(fakeCtx({ searchProvider: 'clinepass' })), undefined, 'the selected provider is not a diagnostic');
+	assert.equal(selectionWarning(fakeCtx()), undefined, 'no configured id leaves the seam to its own selection rules');
+});
+
+test('apply reports the shadow at mount and again when the web entry changes', async () => {
+	const ctx = fakeCtx({ searchProvider: 'deepseek-official' });
+	apply(ctx, Config({}));
+	assert.equal(ctx.warnings.length, 1, 'a working install that never runs has to say so');
+	assert.match(ctx.warnings[0], /registered but unused/u);
+	const web = ctx.listeners.find((entry) => entry.name === 'settings/updated');
+	assert.ok(web !== undefined, 'the web entry stays live, so its updates are watched');
+	web.listener('llm-pi-ai');
+	assert.equal(ctx.warnings.length, 1, 'an unrelated namespace is not a selection change');
+	web.listener('web');
+	assert.equal(ctx.warnings.length, 2, 'toggling the built-in page re-checks the selection');
+});
+
+test('a correctly selected plugin is quiet', async () => {
+	const ctx = fakeCtx({ searchProvider: 'clinepass' });
+	apply(ctx, Config({}));
+	assert.deepEqual(ctx.warnings, [], 'nothing to report when this provider is the selected one');
 });
 
 test('normalizeConfig unwraps live references and passes plain values through', async () => {
@@ -71,29 +112,21 @@ test('normalizeConfig unwraps live references and passes plain values through', 
 	assert.equal(plain.tool, 'vercel:parallel_search');
 	assert.equal(plain.maxTokens, 2048);
 	assert.deepEqual(plain.headers, {}, 'an empty dict field parses to an empty object, not undefined');
-	assert.deepEqual(readConfig({ tool: 'plain', routes: { a: {} } }), {
-		enabled: undefined, provider: undefined, model: undefined, tool: 'plain',
-		timeoutMs: undefined, maxTokens: undefined, maxSources: undefined, instructions: undefined,
-		baseURL: undefined, api: undefined, apiKeyEnv: undefined, apiKey: undefined,
-		headers: undefined, routes: { a: {} }, fallback: undefined, temperature: undefined,
-	}, 'a plain section is read field by field, with unknown keys dropped');
 	const bare = { enabled: false, tool: 'x' };
 	assert.deepEqual(normalizeConfig(bare), bare);
 	assert.deepEqual(normalizeConfig(undefined), {});
 	assert.deepEqual(normalizeConfig(null), {});
 });
 
-test('the editable fields are marked volatile wherever the schema supports it', async () => {
+test('the card fields are the volatile ones, and nothing else is', async () => {
 	const fields = ['enabled', 'provider', 'model', 'tool', 'timeoutMs', 'maxTokens', 'maxSources', 'instructions'];
-	const supports = typeof Config.dict?.enabled?.volatile === 'function';
 	const dict = Config.dict ?? {};
+	assert.ok(dict.enabled !== undefined, 'the schema exposes its fields for this check');
 	for (const field of fields) {
-		const schema = dict[field];
-		assert.ok(schema !== undefined, field + ' is part of the schema');
-		if (supports) assert.equal(schema.meta?.volatile, true, field + ' is editable through the settings form');
+		assert.ok(dict[field] !== undefined, field + ' is part of the schema');
+		assert.equal(dict[field].meta?.volatile, true, field + ' is editable through the settings card');
 	}
-	for (const field of ['baseURL', 'apiKey', 'apiKeyEnv', 'headers', 'routes']) {
-		const schema = dict[field];
-		if (supports && schema !== undefined) assert.notEqual(schema.meta?.volatile, true, field + ' stays ordinary configuration');
+	for (const field of ['baseURL', 'api', 'apiKeyEnv', 'apiKey', 'headers', 'routes', 'temperature']) {
+		assert.notEqual(dict[field]?.meta?.volatile, true, field + ' stays ordinary configuration');
 	}
 });

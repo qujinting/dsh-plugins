@@ -17,7 +17,7 @@ import { resolveApiKey } from './route.js';
 import { normalizeConfig } from './config.js';
 
 /** Attribution header sent on every request. */
-const USER_AGENT = 'dsh-web-search/0.3.2';
+const USER_AGENT = 'dsh-web-search/0.3.3';
 
 /** True for a fetch or AbortSignal abort. */
 function isAbortError(error) {
@@ -133,8 +133,8 @@ export function toolEntry(tool, query, maxResults) {
  */
 export async function searchWithGateway(options) {
 	const { ctx, target, query, signal } = options;
-	// The same boundary the route resolver uses: editable fields are live
-	// references on 0.1.7 and plain values on 0.1.5.
+	// The same boundary the route resolver uses: the loader parses volatile
+	// fields into live references, and a plain section passes through.
 	const config = normalizeConfig(options.config);
 	const maxSources = Number.isInteger(options.maxSources) && options.maxSources > 0 ? options.maxSources : 10;
 	const timeoutMs = Number.isInteger(config.timeoutMs) && config.timeoutMs > 0 ? config.timeoutMs : 90000;

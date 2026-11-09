@@ -21,6 +21,10 @@ This plugin registers a search provider with the id `clinepass`, which:
 
 Searching runs on your ClinePass (or any OpenAI-compatible gateway) quota, never touches the official DeepSeek key, and adds nothing to the main conversation's context.
 
+> **0.3.3**: dsh 0.2.x only (`engines.dsh = >=0.2.0-rc.2 <0.3.0`, verified on 0.2.2-rc.1); the 0.1.x branches are gone;
+> implements the optional `ready()` the 0.2.2 web seam added; and a `web.searchProvider` that points elsewhere is no longer silent
+> (see "Limits and caveats").
+
 ## Why this needs a config change, not just an install
 
 `ctx.web` picks its provider by **explicit id first**: `@deepseek-ai/dsh-base` hardcodes the `web` row as `searchProvider: deepseek-official`, so merely registering a new provider will never select it. This plugin ships as a bundle (`dsh.bundle.patch`) whose `cordis.patch.yml` does two things at once:
@@ -41,93 +45,89 @@ The built-in `web-search-deepseek` stays mounted (just not selected), so you can
 
 ## Install
 
-Pick the path that matches your dsh version. Both install the same bundle; they differ only in **who edits the profile manifest** and where the card shows up afterwards.
+This plugin supports **dsh 0.2.x only**: `package.json` declares `engines.dsh = ">=0.2.0-rc.2 <0.3.0"` (prereleases take part
+in the range), and it is verified on **0.2.2-rc.1**. The 0.1.x compatibility branches were removed in 0.3.3. The launcher enforces
+that range at install and at activation, so a plugin that could not run is refused instead of half-installed.
 
-### dsh 0.1.7 and later (including 0.2.0, using the built-in plugin manager)
+### With the built-in plugin manager (recommended)
 
 ```powershell
 # From npm
-dsh plugin --profile web add dsh-web-search
+dsh plugin --profile desktop add dsh-web-search
 
 # Or from a local checkout
-dsh plugin --profile web add file:D:/project/qujinting/dsh-plugins/dsh-web-search
+dsh plugin --profile desktop add file:D:/project/qujinting/dsh-plugins/dsh-web-search
 ```
 
 - **From 0.2.0-rc.2 the `dsh` command ships with the desktop app**, so Node / pnpm are no longer prerequisites. First use: click **"Manage dsh command"** in the menu bar to put it on PATH, then the two commands above work as written (change `--profile` to the profile you want — the desktop app uses `desktop`).
-- The plugin manager runs pnpm: it installs the package into `<DSH_HOME>/profiles/web/node_modules` and appends `dsh-web-search` to that profile's `dsh.profile.bundles` (backing up `package.json.bak-install-<timestamp>` first).
-- **Takes effect after restarting dsh** (the bundle list is assembled at startup). `dsh --profile web --dump-config` shows the composition without starting the service.
-- The installed card lives at **"Plugins" on the left → Installed → `dsh-web-search` → the "Configure" button on the `dsh-web-search` component row**. 0.1.7 moved configurable plugin pages into the plugin manager page; "Settings → Plugins" is now a read-only list.
-- Note: `dsh plugin add file:` installs the code **into the pnpm store (hard link)**, not a directory junction. After editing this repository you must run the add command again (or use the 0.1.5 junction route for development).
-- Uninstall: `dsh plugin --profile web remove dsh-web-search`.
+- The plugin manager runs pnpm: it installs the package into `<DSH_HOME>/profiles/desktop/node_modules` and appends `dsh-web-search` to that profile's `dsh.profile.bundles` (backing up `package.json.bak-install-<timestamp>` first).
+- **Takes effect after restarting dsh** (the bundle list is assembled at startup).
+- The installed card lives at **"Plugins" on the left → Installed → `dsh-web-search` → the "Configure" button on the `dsh-web-search` component row**.
+- Note: `dsh plugin add file:` installs the code **into the pnpm store (hard link)**, not a directory junction. After editing this repository you must run the add command again (the junction route below is easier while developing).
 
-### dsh 0.1.5
-
-```powershell
-# 1) Install into the web profile (run inside the plugin directory)
-node install.mjs --profile web
-
-# 2) Inspect the composition (does not start the service)
-dsh --profile web --dump-config
-
-# 3) Restart the web service to take effect
-dsh web
-```
-
-`install.mjs` does exactly two reversible things:
-
-- Creates a directory junction at `<DSH_HOME>/profiles/web/node_modules/dsh-web-search` pointing at this directory;
-- Appends `dsh-web-search` to that profile's `package.json` under `dsh.profile.bundles` and writes a `file:` dependency — backing up `package.json.bak-install-<timestamp>` first.
-
-Because it is a **junction**, editing this repository only needs a page refresh (browser half) or a restart (host half); no reinstall. The card lives at **Settings → Plugins → Plugin configuration**, and the values are written to the `dsh-web-search:` section of `<DSH_HOME>/settings.yaml`.
-
-Manual equivalent, for reference:
+### Developing: a directory junction (edits apply in place)
 
 ```powershell
-# Inside <DSH_HOME>/profiles/web
-New-Item -ItemType Junction -Path node_modules\dsh-web-search -Target D:\project\qujinting\dsh-plugins\dsh-web-search
-# Then add dsh-web-search to the end of dsh.profile.bundles in package.json
+# 1) Junction this directory into the profile and add dsh-web-search to its bundles (backup first)
+node install.mjs --profile desktop
+
+# 2) Give this directory a dependency closure: one junction to the installed DSH's node_modules
+node tools/link-dependency-root.mjs
 ```
+
+Step 2 is not optional: the profile links this package in as a junction, so the module really runs from this directory and its
+bare imports (`@deepseek-ai/dsh-web`, `@deepseek-ai/schemastery`, `@deepseek-ai/dsh-credentials`, …) resolve by walking up to this
+directory's `node_modules`. Without it the plugin dies at load time with
+`ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'`.
+
+`link-dependency-root.mjs` creates **one** junction, so re-running it after a DSH upgrade follows the new install; it requires every
+bare import of this plugin to exist as a **readable directory with a package.json** (a dangling link tree does not count — the
+classic breakage after reinstalling DSH elsewhere).
 
 ### Uninstall
 
-0.1.7: `dsh plugin --profile web remove dsh-web-search`
-0.1.5: `node install.mjs --profile web --uninstall`
+```powershell
+dsh plugin --profile desktop remove dsh-web-search    # plugin-manager route
+node install.mjs --profile desktop --uninstall        # junction route
+```
 
-Both remove the package and the bundles entry (backing up `package.json`). After a restart `web.searchProvider` returns to `deepseek-official` and the built-in behaviour is fully restored — the plugin modifies no native file.
+Both remove the package and the bundles entry (backing up `package.json`). After a restart `web.searchProvider` returns to
+`deepseek-official` and the built-in behaviour is fully restored — the plugin modifies no native file.
 
-### One package, two settings APIs
+### One settings model (0.2.x)
 
-dsh 0.1.7 reworked settings: a plugin's Config entry **is** its settings page, editable fields must be marked `.volatile()`, and writes land in the profile's `cordis.patch.yml`; 0.1.5 instead registers a plugin-owned section with `settings.installSection()` that lands in `settings.yaml`. This plugin supports both from one package. **dsh 0.2.0-rc.2 keeps the 0.1.7 model** — `configure({ auto })` is present, `installSection()` and `get(ns)` are gone — so the 0.1.7 column below is also the 0.2.0 behaviour, and the plugin adds no branch for it:
+- **Host half**: a plugin's Config entry **is** its settings page. `src/index.js` calls
+  `settings.configure({ auto: false }, ctx.fiber)`, which says "this plugin draws its own card, do not generate one from the schema".
+- **Editable fields**: the 8 fields marked `.volatile()` in `src/config.js` (`enabled` / `provider` / `model` / `tool` /
+  `timeoutMs` / `maxTokens` / `maxSources` / `instructions`); writes land in the profile's `cordis.patch.yml`.
+- **Reading values**: volatile fields parse into stable references, `.get()` gives the current value, and `normalizeConfig()`
+  flattens at every boundary — so an edit applies to the next search without a restart.
+- **Reading someone else's namespace** (`llm-pi-ai` for the route, `agent-default-model` for the fallback model): only through the
+  `{ ns, value }` projection of `settings.describe()`. Note that `describe()` projects only entries whose schema marks at least one
+  field volatile; both do. If one ever stopped, the symptom is "route unresolvable → provider unavailable", never a silently wrong value.
+- **Card**: the browser half registers into `plugins.row.config` keyed by `<package>#<row id>` (that is
+  `dsh-web-search#dsh-web-search`, the same string the plugin page builds with `rowConfigKey()`); the page passes
+  `{ view, form }` as props, and `form` exposes `state` plus `mutate(ops, revision)`, which answers `false` for a revision conflict.
 
-| | dsh 0.1.5 | dsh 0.1.7+ |
-|---|---|---|
-| Host half | `settings.installSection(ctx, 'dsh-web-search', Config, …)` | `settings.configure({ auto: false }, ctx.fiber)` + the entry's own Config |
-| Editable fields | The whole section goes into the form | Only fields marked `.volatile()` (the `editable()` wrapper in `src/config.js`; older schemastery without that method degrades to a plain field) |
-| Reading values | The parsed section (plain values) | A volatile reference, `.get()` for the current value; `normalizeConfig()` flattens at every boundary |
-| Reading **someone else's** namespace (`llm-pi-ai` / `agent-default-model`, for route resolution and the fallback model) | `settings.get(ns)` | the `{ ns, value }` projection from `settings.describe()` (the 0.1.7 service has **no** `get`); see "the bug fixed in 0.3.1" |
-| Card slot | `settings.plugin.item` + `ctx.settingsScope` | `plugins.row.config` (key = `<package>#<row id>`) + the `form` passed by the page (`state` + `mutate`) |
-| Card location | Settings → Plugins → Plugin configuration | Left "Plugins" → Installed → the package → the component row's "Configure" |
-| Settings land in | `<DSH_HOME>/settings.yaml` | `<DSH_HOME>/profiles/<profile>/cordis.patch.yml` |
+### The bug fixed in 0.3.1, and the cleanup in 0.3.3
 
-The split is decided purely by **service probing**, never by version numbers: the host half checks whether the settings service has `configure` (new if yes, old if no), and `readSettings()` asks `get` first and `describe` second (`src/route.js`); the browser half does `ctx.inject(['settingsScope'], …)` and `ctx.inject(['configForms'], …)` respectively, and only one `inject` can ever be satisfied, so exactly one card registers.
-
-### The bug fixed in 0.3.1: `web_search` reporting "registered but unavailable" on 0.1.7
-
-0.3.0 (the "supports both settings models" release) migrated **its own Config entry** to the 0.1.7 model but forgot the **read someone else's namespace** path: `readSettings()` still only called `settings.get(ns)`, and `@deepseek-ai/dsh-settings` in 0.1.7 has no `get` at all (`installSection` is gone too). The exception was swallowed by `try/catch` and returned `undefined` every time. The consequence: `llm-pi-ai` was never readable, `resolveTarget()` got no `baseURL` / `apiKeyEnv`, `available()` was permanently `false`, and every search became:
+0.3.0 migrated **its own Config entry** to the "Config entry is the settings page" model but forgot the **read someone else's
+namespace** path: `readSettings()` still called `settings.get(ns)`, and `@deepseek-ai/dsh-settings` in 0.2.x has no `get`
+(`installSection` is gone too). The exception was swallowed by `try/catch` and returned `undefined` every time. The consequence:
+`llm-pi-ai` was never readable, `resolveTarget()` got no `baseURL` / `apiKeyEnv`, `available()` was permanently `false`:
 
 ```
 Error: configured web provider "clinepass" is registered but unavailable
     (WEB_PROVIDER_CONFIGURED_UNAVAILABLE)
 ```
 
-It only happened on dsh 0.1.7+; on 0.1.5 `get` still existed so behaviour was unchanged. The fix adds the 0.1.7 read path to `readSettings()` (the `{ ns, value }` projection from `settings.describe()`, which already flattens volatile references internally):
+0.3.1 added the `describe()` read path; **0.3.3 keeps only that one**, dropping the `get()` branch. It "worked" on this machine
+only because a local patch had restored the legacy settings API (`dsh-purge`); a clean install has no `get`, so depending on it
+meant depending on the fallback. Now both kinds of install behave the same.
 
-```js
-if (typeof settings.get === 'function') { /* 0.1.5 */ }
-return describedSettings(settings, ns);      // 0.1.7: find the value by ns in describe()
-```
-
-**If you still get this error after upgrading and cannot reinstall the plugin immediately**, you can pin the route in the profile's `cordis.patch.yml` first (`provider` / `model` are volatile fields and work from a patch too; `baseURL` / `apiKeyEnv` are ordinary fields, which is why they can only be configured from a patch — the card has no such inputs):
+**If you still get this error after upgrading and cannot reinstall the plugin immediately**, you can pin the route in the profile's
+`cordis.patch.yml` first (`provider` / `model` are volatile fields and work from a patch too; `baseURL` / `apiKeyEnv` are ordinary
+fields, which is why they can only be configured from a patch — the card has no such inputs):
 
 ```yaml
 - id: dsh-web-search
@@ -139,7 +139,7 @@ return describedSettings(settings, ns);      // 0.1.7: find the value by ns in d
     apiKeyEnv: CLINEPASS_API_KEY
 ```
 
-The cost is that this search no longer follows the model selected in the UI; delete the block after upgrading to 0.3.1 to restore that.
+The cost is that this search no longer follows the model selected in the UI; delete the block after upgrading to restore that.
 
 ## Configuration
 
@@ -162,7 +162,7 @@ Settings namespace: `dsh-web-search` (it appears in the Web UI under "Settings �
 
 > There is deliberately **no** switch for "write search records into the session log": DSH would refuse to load the whole session, for the reason in "Why no more session-log events".
 
-In the overwhelming majority of cases nothing needs configuring: when the session model is an OpenAI-compatible gateway such as `clinepass`, all routing comes from `llm-pi-ai.providers.<route>` (`api` / `baseURL` / `apiKeyEnv`) — read via `settings.get('llm-pi-ai')` on 0.1.5 and via `settings.describe()` on 0.1.7 (see "the bug fixed in 0.3.1").
+In the overwhelming majority of cases nothing needs configuring: when the session model is an OpenAI-compatible gateway such as `clinepass`, all routing comes from `llm-pi-ai.providers.<route>` (`api` / `baseURL` / `apiKeyEnv`), read through the `{ ns, value }` projection of `settings.describe()` (see "the bug fixed in 0.3.1, and the cleanup in 0.3.3").
 
 ## Tool selection and cost
 
@@ -237,24 +237,95 @@ The parser prefers links from that block (using the markdown label as the title)
 
 ## How far verification went
 
-- **Unit tests** `npm test`: **61 cases, all green, 0 skipped**. Parsing and route resolution **22** (Chinese punctuation, markdown links, dedupe, truncation, session following, model switching, protocol incompatibility, explicit pinning, fallback, plus the 0.1.7 read path: route and endpoint still resolve when only `describe()` exists and `get()` does not, `agent-default-model` is equally readable, and the namespace missing from the projection still yields unavailable), search path and repair tooling 15 (searches write no session event, unavailable routes never touch the session, the schema no longer exposes a write switch, the request body carries `tools[].config`, the four tools' config field mappings, unknown tool ids going out bare, the prompt's search-count limit, unsupported event recognition, the envelope marker, frame structure preserved, dry-run, active-session and `session.lock` protection, current generation only), **host half 5** (0.1.7 uses `configure({auto:false})` and reads live references, 0.1.5 uses `installSection` and prefers the section, neither present falls back to the composite entry, `normalizeConfig` flattens references and passes plain values through, editable fields are marked volatile), browser half 19 (both registration paths: 0.1.7's `plugins.row.config` key `<pkg>#<row>`, 0.1.5's `settings.plugin.item` waiting for the ledger; the 0.1.7 page view rendering fields, the summary view needing no form, unserved entries rendering empty, read-only entries disabling every button; the write planner, default-equals-clear-override, collapsed rendering only the header, degraded rendering when the namespace is missing, stylesheets reading only theme tokens and fully namespaced, Tag/Switch/chevron coming from the base module, the chevron falling back `IconChevronDownOutline14` → `IconChevronDownOutlineMedium` → `IconChevronDownOutlineRegular`, and rendering without any icon when none exists, boolean fields being a label-left switch-right toggle row, the search tool being a radio list with no `<select>` on the page, only the four documented tools, and the tool section stating the count limit is advisory).
-  Twelve of those rendering tests need `react-dom` and skip gracefully without it; `npm run link-runtime -- --with-react` installs it alongside, which is why this machine now reports **61 passed + 0 skipped** (the earlier closure came from an old global dsh install and could only reach 49 passed + 10 skipped).
-- **Real dsh 0.2.0-rc.2 acceptance (0.3.2)**: runs on desktop 0.2.0-rc.2 (kernel `@deepseek-ai/dsh` / `dsh-web` / `dsh-settings` all 0.2.0-rc.2) **without a single code change**. Host half: `include:dsh-web-search` mounts, `ctx.web.registerSearchProvider` and `settings.configure({ auto: false }, owner)` signatures are unchanged, `settings.describe()` still returns `{ ns, value, user, writable }` (so `readSettings()`'s 0.1.7 path still applies), the `llm-pi-ai` namespace and `providers.clinepass`'s `api` / `baseURL` / `apiKeyEnv` are intact, and a real `web_search` returned an answer with sources. Client half: driven through the real GUI over CDP (left "Plugins" → Installed → the config button on the component row) confirming the card still renders **all 8 fields** (1 switch / 4 radios / 3 numbers / 3 texts / 1 textarea + three footer buttons), the `plugins.row.config` slot is declared by the plugin manager and renders `dsh-web-search#dsh-web-search`, and the console shows 0 errors; the base `Tag({ tone })` and `Switch({ checked, onChange, label, disabled })` signatures are unchanged and all 12 `--dsw-alias-*` tokens the card uses exist in 0.2.0. **The only name 0.2.0 changed is an icon**: `IconChevronDownOutline14` was replaced by `IconChevronDownOutlineMedium` / `Regular` (0 occurrences in the whole payload); it only appeared in the 0.1.5 card's header, so it never triggered before, and from 0.3.2 the code falls back by name.
-- **Real 0.1.7 settings implementation (the 0.3.1 regression check)**: instead of booting the whole harness, the **real** `SettingsForms.prototype.describe` (unstubbed, given only a stand-in for `configEditor.configuration()`) was run against the **real** `@deepseek-ai/dsh-llm-pi-ai` Config schema and this machine's real profile route values: `describe()` output `[{ ns: 'llm-pi-ai', value: { providers: { clinepass: { baseURL: 'https://api.cline.bot/api/v1' } } } }]`. The same ctx was then fed to HEAD (0.3.0) and to the fixed `resolveTarget()`: 0.3.0 reports `available() === false` under the 0.1.7 service (exactly that `registered but unavailable`), while the fixed version reports `available() === true`, endpoint `https://api.cline.bot/api/v1/chat/completions`, source `session request header`; the 0.1.5 `get(ns)` ctx resolved correctly before and after. **Not verified**: running `web_search` again after restarting the harness in the real GUI (the plugin is a hard-linked `file:` copy in the profile, so repository changes need another `dsh plugin add` plus a restart).
-- **Real GUI acceptance (aligned item by item with the built-in card)**: using this machine's Chrome over CDP against a running `dsh web` (throwaway profile plus a session cookie minted with the local `client-connection/browser-session` signing key, which never leaves the machine), this card and the built-in "Web search" card were measured on the **same page**: collapsed both **564×75** (header padding 14/16, gap 12, title 15px/600, summary 13px, chevron 14×14 with `viewBox="0 0 14 14"`); expanded body border-top / margin 16 / padding-bottom 8, field padding 12, label 13px/500, hint 12px, control 530×36 (radius 8 / border 1px / padding 12 / font 13), footer and save button (font 13, padding 5/14, bg = label-primary, text = bg-layer-3) **identical item by item**; the "unsaved" Tag is the same base component, measured 49×19 / 11px / radius 999px matching the built-in one; switching to `body[data-ds-dark-theme]` changes both cards' tokens together (card 44,44,46 / border 67,69,74 / control 53,54,56 / text 249,250,251) with **0 errors and 0 warnings** in the console; the position is always after the four built-in cards (Terminal / Agent loop / Subagent / Web search). The two controls were also measured against the built-in Subagent card on that page: the toggle row is `justify-content:space-between` / `align-items:flex-start` / `gap:16px` with a 36×20 switch flush right (0px right margin), identical to the built-in toggle row; the radio group frame (border 1px rgba(0,0,0,.16), radius 8, padding 10, gap 6, max-height 280, overflow auto) matches the built-in Subagent card's selection fieldset **item by item**, as do row padding 6 / radius 6 / gap 8 / native radio 13×13; the four options share one `name`, exactly one is checked, and the page contains 0 `<select>` elements.
-- **Real GUI acceptance (dsh 0.1.7, isolated instance)**: a separate `DSH_HOME` (temp directory, temp profile, port 3091) ran a real `dsh 0.1.7-rc.2 web`, the plugin was installed, and the real path was walked over CDP: left "Plugins" lists `dsh-web-search v0.3.0` (1 installed) → the "Configure" button on the `dsh-web-search` component row → the page renders the card's **8 fields / 4 radios (default selected) / 1 toggle row / 6 text inputs / three footer buttons**, with the stylesheet injected as `style[data-plugin-css]`; switching to `vercel:parallel_search` and pressing save shows "Saved (1 item)." and the profile's `cordis.patch.yml` really contains `- id: dsh-web-search\n  config:\n    tool: vercel:parallel_search`; **0 errors, 0 warnings** throughout. (The temporary instance and home were deleted; the dsh you were running was never touched.)
-- **Real seam integration** `node test/live-gateway.mjs`: registers this provider in the real `WebRuntime` (`@deepseek-ai/dsh-web`), selects it via `searchProvider: clinepass`, sends one real search to `api.cline.bot`, and asserts sources are non-empty and `maxResults` is honoured.
-- **Real gateway measurements (search counts and `tools[].config`)**: calling the real gateway through the plugin's own `searchWithGateway`, perplexity and parallel each returned 200 / `finish_reason: stop`, 10 sources each, no truncation notice; `gatewayToolCalls` were 4 and 2, `gatewayCost` **$0.0298 / $0.0202** (the same class of question before the "at most 3 searches" instruction was 6 / 4 calls and $0.0430 / $0.0361).
-- **Real DSH end to end**: a throwaway profile (`@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-headless` + this plugin) ran a real task and returned real source links. After it worked end to end, no `web/clinepass-search-request` events are produced any more; the ones earlier versions wrote into the session log were patched with `ignorable: true` by `tools/repair-session-events.mjs` (see "Why no more session-log events"), so those sessions load normally again.
+- **Unit tests** `npm test`: **59 cases, all green, 0 skipped**. Parsing 7 (Chinese punctuation, markdown links, bare URLs, dedupe,
+  truncation, titles, rejected schemes); routes 15 (session following, model switching, `describe()` as the only read path,
+  the `agent-default-model` fallback, protocol incompatibility, explicit pinning, per-route overrides, fallback, availability,
+  a malformed URL, and no settings service at all); search path and repair tooling 15 (searches write no session event,
+  unavailable routes never touch the session, the schema no longer exposes a write switch, `tools[].config`, the four tools'
+  config field mappings, unknown tool ids going out bare, the prompt's search-count limit, unsupported event recognition,
+  the envelope marker, frame structure preserved, dry-run, active-session and `session.lock` protection, current generation only);
+  **host half 7** (`configure({auto:false})`, the live reference, falling back to the composite entry without a settings service,
+  `ready()` agreeing with `available()` and never throwing, the diagnostic text for a selection that names another provider,
+  reporting it once at mount and again when the `web` entry changes, `normalizeConfig` flattening references, and the volatile
+  fields being exactly the card's 8); **browser half 13** (registering `plugins.row.config` and waiting only for `configForms`,
+  the write planner, default-equals-clear-override, only the four documented tools, the count limit disclosed as advisory,
+  stylesheets reading only theme tokens and fully namespaced, the page view rendering all 8 fields, the summary view rendering
+  no form, the unserved / loading / read-only degradations, boolean fields being a label-left switch-right toggle row, the search
+  tool being a radio list with no `<select>`, and an overridden field carrying the Tag plus "reset").
+  The rendering cases need `react-dom`: installed under `.card-test-modules/`
+  (`npm install --prefix .card-test-modules --no-save react@18 react-dom@18`, already git-ignored) they run automatically, and
+  without it they skip gracefully. This machine reports **59 passed + 0 skipped**.
+- **Real dsh 0.2.2-rc.1 acceptance (0.3.3)**: on desktop kernel `@deepseek-ai/dsh-desktop-runtime 0.2.2-rc.1`:
+  - Host half: `include:dsh-web-search` is `enabled: true / fiberPhase: active`; `ctx.web.registerSearchProvider`,
+    `WebRuntime.Config { searchProvider, fetchProvider }` (both still volatile) and
+    `settings.configure({auto:false}, fiber)` all exist; `settings.describe()` still returns `{ ns, value, user, writable }`, and
+    both `llm-pi-ai.providers.clinepass` and `agent-default-model` are readable from that projection.
+  - **One real `web_search`**: returned an answer with real sources, which exercises the whole chain on 0.2.2-rc.1 —
+    registration → session model following → resolving endpoint and `apiKeyEnv` from `llm-pi-ai` → credential resolution →
+    gateway request → source parsing. `deepseek-official` was registered at the same time (`include:web-search-deepseek` is
+    also active) and no `WEB_PROVIDER_AMBIGUOUS` was raised, i.e. the bundle layer's `searchProvider: clinepass` wins.
+  - Client half: `Slots.listSubTree` reports the occupant `dsh-web-search#dsh-web-search` in `plugins.row.config` with
+    `active: true` — the `window.__ModuleLoader__.load` factory ran, and `require('react')` plus
+    `require('@deepseek-ai/dsh-client-ui-primitives')` both resolved from the baseline module table; the key the page dispatches
+    (`rowConfigKey(pkg.name, row.rowId)`) is exactly the registered key.
+  - 0.2.2 added the **optional** `ready(llmProvider)` / `web.searchReady()` to the web seam, which `dsh-tool-web` uses to decide
+    whether to hand `web_search` to the model for a step; 0.3.3 implements it (see "Limits and caveats").
+- **Real 0.2.x settings implementation (the 0.3.1 regression check, kept in 0.3.3)**: instead of booting the whole harness, the
+  **real** `SettingsForms.prototype.describe` (unstubbed, given only a stand-in for `configEditor.configuration()`) was run against
+  the **real** `@deepseek-ai/dsh-llm-pi-ai` Config schema and this machine's real profile route values: `describe()` output
+  `[{ ns: 'llm-pi-ai', value: { providers: { clinepass: { baseURL: 'https://api.cline.bot/api/v1' } } } }]`. Fed to 0.3.0's
+  `resolveTarget()` it reports `available() === false` (exactly that `registered but unavailable`); the fixed version reports
+  `available() === true`, endpoint `https://api.cline.bot/api/v1/chat/completions`, source `session request header`.
+- **Real GUI acceptance (0.2.0-rc.2, aligned item by item with the built-in card)**: using this machine's Chrome over CDP against
+  a running `dsh web` (throwaway profile plus a session cookie minted with the local `client-connection/browser-session` signing
+  key, which never leaves the machine), this card and the built-in "Web search" card were measured on the **same page**:
+  collapsed header padding 14/16, gap 12, title 15px/600, summary 13px; expanded body border-top / margin 16 / padding-bottom 8,
+  field padding 12, label 13px/500, hint 12px, control 530×36 (radius 8 / border 1px / padding 12 / font 13), footer and save
+  button (font 13, padding 5/14, bg = label-primary, text = bg-layer-3) **identical item by item**; switching to
+  `body[data-ds-dark-theme]` changes the tokens together, with **0 errors and 0 warnings** in the console. The toggle row and the
+  radio group were measured against the built-in Subagent card: toggle row `justify-content:space-between` /
+  `align-items:flex-start` / `gap:16px` with the switch flush right; radio frame radius 8 / padding 10 / gap 6 / max-height 280,
+  row padding 6 / radius 6, native radio 13×13. **The only name 0.2.x changed is an icon**
+  (`IconChevronDownOutline14` → `Medium` / `Regular`), and 0.3.3 deleted the 0.1.x card that used it along with the whole
+  compatibility branch, so no fallback chain remains.
+  **No pixel re-measurement in this round (0.3.3)**: the card change is covered by assertions on markup rendered with real React
+  (the rendering tests above); screenshot-level re-measurement needs separate authorization.
+- **Real seam integration** `node test/live-gateway.mjs`: registers this provider in the real `WebRuntime` (`@deepseek-ai/dsh-web`),
+  selects it via `searchProvider: clinepass`, sends one real search to `api.cline.bot`, and asserts sources are non-empty and
+  `maxResults` is honoured.
+- **Real gateway measurements (search counts and `tools[].config`)**: calling the real gateway through the plugin's own
+  `searchWithGateway`, perplexity and parallel each returned 200 / `finish_reason: stop`, 10 sources each, no truncation notice;
+  `gatewayToolCalls` were 4 and 2, `gatewayCost` **$0.0298 / $0.0202** (the same class of question before the "at most 3 searches"
+  instruction was 6 / 4 calls and $0.0430 / $0.0361).
+- **Real DSH end to end**: a throwaway profile (`@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-headless` + this plugin) ran a real
+  task and returned real source links. After it worked end to end, no `web/clinepass-search-request` events are produced any more;
+  the ones earlier versions wrote into the session log were patched with `ignorable: true` by
+  `tools/repair-session-events.mjs` (see "Why no more session-log events"), so those sessions load normally again.
 
 ## Limits and caveats
 
 - **No session-log events whatsoever.** Early versions appended a `web/clinepass-search-request` event (called `web/current-model-search-request` in v0.1.0) per search, which made the session **refuse to load entirely** on the next resume; that behaviour is removed, with no switch to bring it back. Sessions already damaged are repaired by the tool in the next section.
 - **Only routes that are OpenAI-compatible and support provider-side tools work.** When a route declares a non-chat-completions protocol (such as `anthropic-messages`), this provider reports itself unavailable — deliberately: sending a gateway tool id to an endpoint that does not understand it only yields confusing errors.
-- **Switching to a non-gateway model makes `web_search` report `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`.** Two ways out: configure `fallback.provider` / `fallback.model` in settings to pin a gateway route as the fallback, or change `web.searchProvider` in the profile's `cordis.patch.yml` back to `deepseek-official`.
+- **Switching to a non-gateway model now hides `web_search` from the tool list.** 0.3.3 implements the web seam's optional
+  `ready(llmProvider)`: `dsh-tool-web` asks `ctx.web.searchReady()` per step and only admits `web_search` when it answers true, so
+  an unresolvable route (say the current model speaks a non-chat-completions protocol) means the tool is not offered, instead of
+  the model calling it and eating a `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`. To keep search available in that state, configure
+  `fallback.provider` / `fallback.model` to pin a gateway route as the fallback, or change `web.searchProvider` in the profile's
+  `cordis.patch.yml` back to `deepseek-official`.
+- **A `web.searchProvider` pointing elsewhere silently disabled the plugin — 0.3.3 warns instead.** Provider selection is
+  explicit-id first, and the built-in "Web search" settings page
+  (`@deepseek-ai/dsh-client-ui-settings-web-search`) writes exactly that field from its Search API switch. Once it is switched to
+  DeepSeek, the profile's settings override outranks this plugin's bundle layer: searches still appear to succeed, but the built-in
+  provider answers them. The plugin compares the selection at mount and on every `settings/updated` (ns = `web`) and logs a warning
+  with the fix when it is not `clinepass` — no more silent no-op.
 - **Credentials are read only from `ctx.credentials` and the launch environment.** Keys never reach logs or session records (records carry only route, duration, cost, and search count).
 - **`web_fetch` is unaffected** and still uses the built-in `http` provider.
 - **A provider-side tool is one full model turn**: measured latency 8–15 seconds, cost per the table above.
+- **`node_modules` must point at the same installed DSH.** The profile links this package in as a junction, the module runs from
+  this directory, and bare imports resolve through this directory's `node_modules`; after a DSH upgrade or reinstall, re-run
+  `node tools/link-dependency-root.mjs` or the plugin dies with `ERR_MODULE_NOT_FOUND`. Do **not** substitute
+  `tools/link-harness-runtime.mjs`: it removes the junction and builds real directories, and if it picks the wrong payload (say
+  another Electron app on the machine) it fills `node_modules` with unrelated files and the plugin fails to load.
 - The plugin modifies no native package file, and uninstalling restores everything.
 
 ## Why no more session-log events
@@ -285,18 +356,20 @@ node tools/repair-session-events.mjs repair --session 80bad975-cea1-48af-b509-f2
 
 ## The card (browser half)
 
-This plugin is **double-sided**, and the two settings models each get a card:
+This plugin is **double-sided**: the host half registers the provider, and the browser half contributes one settings card
+(0.2.x has exactly that one).
 
-- **dsh 0.1.7**: `lib/client.js` registers into `plugins.row.config` with the key `dsh-web-search#dsh-web-search`. The page (the plugin manager) draws the title, icon, and breadcrumb itself and passes the entry's `form` (`state` + `mutate`) in as a prop; the list also calls a `summary` view for one line, so the card returns one sentence **while the row is collapsed**.
-- **dsh 0.1.5**: registers into `settings.plugin.item` with the key `dsh-web-search` and binds `ctx.settingsScope` itself; the card is a `<li>` plus a header button with `aria-expanded` (title / summary / unsaved marker / chevron), **collapsed by default**, collapsing again after a successful save and staying open on failure.
-
-The **ordering rule** for the 0.1.5 card: the settings page renders in ledger order, and this plugin's `apply` runs before the settings plugin registers its own cards, so "register immediately" would push this card ahead of all built-in ones. The implementation instead **waits until the ledger already holds a card** — so it lands after whatever configurations were loaded, rather than being pinned last (cards registered later still land after it). 0.1.7 has no such problem: the plugin page decides placement.
+- `lib/client.js` registers into `plugins.row.config` with the key `dsh-web-search#dsh-web-search` (the page builds the same
+  string with `rowConfigKey(pkg.name, row.rowId)`).
+- The page (the plugin manager) draws the title, icon, breadcrumb, collapse, and placement itself and passes the entry's `form`
+  (`state` + `mutate`) in as a prop; the list also calls a `summary` view for one line, so the card returns one sentence
+  **while the row is collapsed**.
 
 Fields the card can change: `enabled`, `tool` (the four documented gateway search tools), `maxSources`, `timeoutMs`, `maxTokens`, `provider` / `model` (pin the route, optional), `instructions`. Save after editing; when a field returns to its default the write is `unset` (clear the override and inherit again), and every overridden field has its own "restore default".
 
 The control shapes match the built-in cards: boolean fields are a **label-left, switch-right** row (the shape of the built-in Subagent card's toggle row, switch flush right); `tool` is a **radio list** rather than a `<select>` — every option visible at once, with the fieldset border / radius / padding / spacing following the built-in Subagent card's selection list (native radios, no custom drawing).
 
-The browser half is a **hand-written** `lib/client.js`, pinned to the loading format every plugin bundle uses (`window.__ModuleLoader__.load({ id, factory })`), so this repository has no build step and depends on no npm runtime package; it uses `react` and `@deepseek-ai/dsh-client-ui-primitives` from the base module table, and cross-plugin collaboration always goes through cordis services or slots (`ctx.slots`, 0.1.5's `ctx.settingsScope`, 0.1.7's `ctx.configForms` probe).
+The browser half is a **hand-written** `lib/client.js`, pinned to the loading format every plugin bundle uses (`window.__ModuleLoader__.load({ id, factory })`), so this repository has no build step and depends on no npm runtime package; it uses `react` and `@deepseek-ai/dsh-client-ui-primitives` from the base module table, and cross-plugin collaboration always goes through cordis services or slots (`ctx.slots` and `ctx.configForms`).
 
 > Changing the browser half's **content** only needs a page refresh (Ctrl+Shift+R if needed): the bundle is read from disk by the host every time, and in testing new styles and labels appeared in an already-running `dsh web`. Only **adding or removing a bundle itself** (a change to `dsh.profile.bundles` / the profile `package.json`) requires a restart.
 
@@ -314,7 +387,7 @@ What is genuinely shared is the base module table the shell itself establishes, 
 
 So the card:
 
-1. `require('@deepseek-ai/dsh-client-ui-primitives')` — the **same instance** the built-in cards use, to render the "unsaved" `Tag`, the boolean `Switch`, and the header `IconChevronDownOutline14`;
+1. `require('@deepseek-ai/dsh-client-ui-primitives')` — the **same instance** the built-in cards use, to render the override `Tag` and the boolean `Switch`;
 2. Writes every other piece of chrome with the host's theme tokens (`--dsw-alias-*`), one rule per built-in rule (values taken from `PluginCard.module.css` / `fields.module.css` at that version, not eyeballed), injected as `style[data-plugin-css]` with selectors scoped to `.dswwsc-*`. The payoff: the card follows theme and light/dark switches because every colour is a token — the stylesheet contains **no hex or rgba literal** (a unit test asserts this).
 
 > Two routes were explicitly rejected: importing that internal package (it has no export), and borrowing its already-injected hashed class names (`.YyYd_a_card` and friends), which would go silently dead after any host refactor.
@@ -322,10 +395,11 @@ So the card:
 ## Development
 
 ```powershell
-# This repository is plain ESM JS (no build step). The tests need DSH's module closure resolved —
-# either of these:
-npm run link-root        # recommended: auto-discover the installed DSH closure and junction node_modules (no copies)
-npm run link-runtime -- --asar "<DSH install dir>\resources\app.asar" --with-react   # or: extract a real directory from app.asar
+# This repository is plain ESM JS (no build step). The tests need DSH's module closure resolved:
+npm run link-root             # junction node_modules to the installed DSH (no copies)
+
+# The rendering tests need react-dom (not in the source package; the Web UI is a prebuilt artefact):
+npm install --prefix .card-test-modules --no-save react@18 react-dom@18
 
 npm test                      # unit tests (costs nothing)
 node test/live-gateway.mjs    # real gateway + real seam (spends one search)
@@ -338,23 +412,28 @@ install roots (`%LOCALAPPDATA%\Programs`, `Program Files`, `D:\apps`, ...), prob
 verifies resolution on the spot. Re-run it after a DSH upgrade and the link follows the new install;
 `npm run link-root -- --json` gives a machine-readable summary.
 
-`link-runtime` follows the **real import graph** to extract `@deepseek-ai/*` and their transitive dependencies out of Electron's `app.asar` into `node_modules/` (the current closure is 22 packages / 877 files, with source and version recorded in `node_modules/.dsh-harness-runtime.json`). The reason not to install from npm: `@deepseek-ai/dsh-web` on the registry is still at `0.0.1-rc.1`, which does not match the kernel version. Re-run it after every DSH upgrade (add `--clean` to empty first). It **removes a directory junction on `node_modules` before creating a real directory**, so it cannot follow an old link and write into a shared profile directory — the earlier junction pointed at an uninstalled global dsh and an old monorepo checkout, which is exactly why `npm test` reported `ERR_MODULE_NOT_FOUND`.
+The rendering tests look for `react` / `react-dom` in `DSH_CARD_TEST_MODULES`, `.card-test-modules/` (git-ignored),
+and `$DSH_HOME/profiles/*` in that order; when none has them, those 13 cases skip gracefully and the rest still run.
 
-The source package contains no `react` / `react-dom` (the Web UI is a prebuilt artefact); `--with-react` installs a copy and places it here so the 12 rendering tests really run. Without the flag they skip gracefully (`DSH_CARD_TEST_MODULES` can still point at any module directory you provide).
+> Do **not** substitute `tools/link-harness-runtime.mjs` for `link-root`: it extracts real directories from an `app.asar` and
+> **removes** the `node_modules` junction first. That bit us before 0.3.3 — it auto-discovered another Electron app's
+> `app.asar` on this machine, extracted a closure with no `@deepseek-ai/*` in it, and the plugin failed to load on the spot.
+> Only pass `--asar <path>` when you really have **this** DSH's asar and really want real directories.
 
 | File | Role |
 |---|---|
-| `src/index.js` | Plugin entry: `name` / `inject` / `apply` / settings namespace registration. |
-| `src/config.js` | The schemastery config schema and constants. |
-| `src/route.js` | Pick the model + resolve the endpoint + fetch credentials (no network calls). |
+| `src/index.js` | Plugin entry: `name` / `inject` / `apply` / `configure({auto:false})` / selection diagnostic. |
+| `src/config.js` | The schemastery config schema, volatile fields, and constants. |
+| `src/route.js` | Pick the model + resolve the endpoint + fetch credentials (no network calls; `describe()` only). |
 | `src/gateway.js` | The one HTTP request, error classification, and assembly of answer and sources. |
 | `src/parse.js` | `Sources:` block splitting, markdown / bare URL extraction, dedupe, titles. |
 | `src/prompt.js` | The search instruction (the fixed closing shape is part of the parsing contract). |
-| `src/provider.js` | The `WebSearchProvider` implementation: `available()` / `search()` (read-only seam, no session log). |
+| `src/provider.js` | The `WebSearchProvider` implementation: `available()` / `ready()` / `search()` (read-only seam, no session log). |
 | `cordis.patch.yml` | The bundle layer: changes `web.searchProvider` and inserts the plugin row. |
-| `lib/client.js` | Browser half: the hand-written loader bundle registering the settings card (0.1.7+'s `plugins.row.config` / 0.1.5's `settings.plugin.item`). |
+| `lib/client.js` | Browser half: the hand-written loader bundle registering the `plugins.row.config` card. |
 | `tools/repair-session-events.mjs` | Scan / repair session logs broken by custom session events (adds `ignorable: true`, with backup and self-check). |
-| `tools/link-harness-runtime.mjs` | Extract the module closure from an installed DSH payload into `node_modules/` so local tests can resolve `@deepseek-ai/*`. |
+| `tools/link-dependency-root.mjs` | Junction `node_modules` to the installed DSH (the **recommended** closure source). |
+| `tools/link-harness-runtime.mjs` | Extract real directories from an `app.asar`; only when explicitly needed (it removes the junction). |
 | `install.mjs` | Install / uninstall into a profile. |
 
 ## Marking it as a DSH plugin

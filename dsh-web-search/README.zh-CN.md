@@ -23,6 +23,9 @@
 
 搜索跑在你的 ClinePass（或任何 OpenAI 兼容网关）额度上，不碰 DeepSeek 官方 key，也不额外消耗主对话的上下文。
 
+> **0.3.3**：只支持 dsh 0.2.x（`engines.dsh = >=0.2.0-rc.2 <0.3.0`，实测 0.2.2-rc.1），0.1.x 兼容分支已删除；
+> 补上 web seam 在 0.2.2 新增的可选 `ready()`；`web.searchProvider` 被别人改走时不再静默（见《限制与注意事项》）。
+
 ## 为什么必须改配置而不只是装插件
 
 `ctx.web` 的供应商选择是「显式 id 优先」：`@deepseek-ai/dsh-base` 把 `web` 那一行写死为
@@ -45,109 +48,86 @@
 
 ## 安装
 
-按 dsh 版本选一条路。两条路装的是同一个 bundle，区别只在**谁改 profile 清单**，以及装完卡片出现在哪。
+本插件只支持 **dsh 0.2.x**：`package.json` 的 `engines.dsh` 是 `>=0.2.0-rc.2 <0.3.0`（预发布版也参与匹配），
+实测在 **0.2.2-rc.1** 上跑通。0.1.x 的兼容分支已在 0.3.3 移除。启动器会用这个范围在安装与激活时校验，
+不满足就直接拒绝，不会装上一个跑不起来的插件。
 
-### dsh 0.1.7 及以后（含 0.2.0，用内置插件管理器）
+### 用内置插件管理器（推荐）
 
 ```powershell
 # 从 npm
-dsh plugin --profile web add dsh-web-search
+dsh plugin --profile desktop add dsh-web-search
 
 # 或从本地 checkout
-dsh plugin --profile web add file:D:/project/qujinting/dsh-plugins/dsh-web-search
+dsh plugin --profile desktop add file:D:/project/qujinting/dsh-plugins/dsh-web-search
 ```
 
 - **0.2.0-rc.2 起 `dsh` 命令随桌面版打包**，不再要求你另装 Node / pnpm；第一次用先点菜单栏的
   **「Manage dsh command」** 把它装进 PATH，之后上面两条命令照常用（`--profile` 换成要装的 profile，桌面版是 `desktop`）。
-- 插件管理器会跑 pnpm：把包装进 `<DSH_HOME>/profiles/web/node_modules`，并把 `dsh-web-search`
+- 插件管理器会跑 pnpm：把包装进 `<DSH_HOME>/profiles/desktop/node_modules`，并把 `dsh-web-search`
   追加进该 profile 的 `dsh.profile.bundles`（它自己会先备份 `package.json.bak-install-<时间戳>`）。
-- **重启 dsh 后生效**（bundle 清单在启动时组装）。可用 `dsh --profile web --dump-config` 先看拼装结果，不会启动服务。
+- **重启 dsh 后生效**（bundle 清单在启动时组装）。
 - 装完的配置页在 **左侧「插件」→ 已安装 → `dsh-web-search` → 组件行 `dsh-web-search` 的「配置」**。
-  0.1.7 把带配置的插件页搬到了插件管理器页；「设置 → 插件」现在只剩只读的插件列表。
 - 注意：`dsh plugin add file:` 是把代码**装进 pnpm store（硬链接）**，不是目录联接。改完本仓库代码要再跑一次
-  add 命令才生效（或者干脆用下面 0.1.5 那条 junction 路线做开发）。
-- 卸载：`dsh plugin --profile web remove dsh-web-search`。
+  add 命令才生效（开发时用下面那条 junction 路线更省事）。
 
-### dsh 0.1.5
-
-```powershell
-# 1) 装进 web profile（在插件目录里执行）
-node install.mjs --profile web
-
-# 2) 看拼装结果（不会启动服务）
-dsh --profile web --dump-config
-
-# 3) 重启 web 服务后生效
-dsh web
-```
-
-`install.mjs` 只做两件可逆的事：
-
-- 在 `<DSH_HOME>/profiles/web/node_modules/dsh-web-search` 建一个目录联接（junction）指向本目录；
-- 把 `dsh-web-search` 追加到该 profile `package.json` 的 `dsh.profile.bundles`，并写一条 `file:` 依赖；
-  改写前会自动备份 `package.json.bak-install-<时间戳>`。
-
-它建的是**目录联接**，所以改本仓库代码后刷新页面（浏览器半边）或重启（host 半边）即可，不用重装。
-配置页在 **设置 → 插件 → 插件配置**，设置写在 `<DSH_HOME>/settings.yaml` 的 `dsh-web-search:` 段。
-
-手动安装（等价，供参考）：
+### 开发：目录联接（改代码即生效）
 
 ```powershell
-# 在 <DSH_HOME>/profiles/web 下
-New-Item -ItemType Junction -Path node_modules\dsh-web-search -Target D:\project\qujinting\dsh-plugins\dsh-web-search
-# 然后把 dsh-web-search 加进 package.json 的 dsh.profile.bundles 末尾
+# 1) 把本目录联进 profile，并把 dsh-web-search 写进 bundles（会备份 package.json）
+node install.mjs --profile desktop
+
+# 2) 给本目录建依赖闭包：一条 junction 指向已安装 DSH 的 node_modules
+node tools/link-dependency-root.mjs
 ```
+
+第 2 步不能省：profile 用 junction 把本包链进来，模块实际是从本目录跑的，它的裸导入
+（`@deepseek-ai/dsh-web`、`@deepseek-ai/schemastery`、`@deepseek-ai/dsh-credentials`……）靠向上查找本目录的
+`node_modules`。缺了它，插件在加载期就报 `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'`。
+
+`link-dependency-root.mjs` 只建**一个** junction，所以 DSH 换安装路径或重装后重跑一次即可；它要求本插件的每个裸导入
+都以**可读的 package.json** 存在，悬空链接不算数（换装 DSH 后最典型的坏法）。
 
 ### 卸载
 
-0.1.7：`dsh plugin --profile web remove dsh-web-search`
-0.1.5：`node install.mjs --profile web --uninstall`
+```powershell
+dsh plugin --profile desktop remove dsh-web-search    # 插件管理器路线
+node install.mjs --profile desktop --uninstall        # junction 路线
+```
 
 两者都会移除包与 bundles 条目（并备份 `package.json`）。重启后 `web.searchProvider` 回到 `deepseek-official`，
 内置行为完全恢复——插件不改动任何原生文件。
 
-### 一个包，两套 settings API
+### 设置模型：0.2.x 只有一套
 
-dsh 0.1.7 重做了设置：插件的 Config 条目**就是**它的设置项，可编辑字段要标 `.volatile()`，写入落在 profile 的
-`cordis.patch.yml`；0.1.5 则是 `settings.installSection()` 注册一个 plugin-owned section，落在 `settings.yaml`。
-本插件用一个包同时支持两者。**dsh 0.2.0-rc.2 沿用 0.1.7 那一套**——`configure({ auto })` 在，`installSection()`
-与 `get(ns)` 都不在——所以下表 0.1.7 那一列同时就是 0.2.0 的行为，本插件没有为它加分支：
+- **host 半边**：插件的 Config 条目**就是**它的设置项。`src/index.js` 调
+  `settings.configure({ auto: false }, ctx.fiber)`，意思是「本插件自己画卡片，别用 schema 自动生成一页」。
+- **可编辑字段**：`src/config.js` 里标 `.volatile()` 的 8 个字段（`enabled` / `provider` / `model` / `tool` /
+  `timeoutMs` / `maxTokens` / `maxSources` / `instructions`）；写入落在 profile 的 `cordis.patch.yml`。
+- **读值**：volatile 字段解析成稳定引用，`.get()` 取当前值，`normalizeConfig()` 在每个边界统一摊平——所以设置一改
+  下次搜索就生效，不用重启。
+- **读别人的命名空间**（`llm-pi-ai` 解路由、`agent-default-model` 兜底模型）：只能走 `settings.describe()` 的
+  `{ ns, value }` 投影。注意 `describe()` 只投影**至少有一个 volatile 字段**的条目——这两个都有；某天谁丢了
+  volatile，插件会表现为「路由解不出 → 供应商不可用」，而不是静默用错值。
+- **卡片**：浏览器半边往 `plugins.row.config` 注册，key 是 `<包名>#<行 id>`（即 `dsh-web-search#dsh-web-search`，
+  和插件页 `rowConfigKey()` 的拼法一致）；页面把 `{ view, form }` 当 prop 传进来，`form` 提供 `state` 与
+  `mutate(ops, revision)`，返回 `false` 表示 revision 冲突。
 
-| | dsh 0.1.5 | dsh 0.1.7+ |
-|---|---|---|
-| host 半边 | `settings.installSection(ctx, 'dsh-web-search', Config, …)` | `settings.configure({ auto: false }, ctx.fiber)` + 条目自身 Config |
-| 可编辑字段 | 整个 section 都进表单 | 只有标了 `.volatile()` 的字段（`src/config.js` 的 `editable()` 包装；老版 schemastery 没有这个方法就自动退化成普通字段） |
-| 读值 | section 解析结果（普通值） | volatile 引用，`.get()` 取当前值；`normalizeConfig()` 在每个边界统一摊平 |
-| 读**别人的**命名空间（`llm-pi-ai` / `agent-default-model`，用来解路由和兜底模型） | `settings.get(ns)` | `settings.describe()` 返回的 `{ ns, value }` 投影（0.1.7 的服务**没有** `get`）；见「0.3.1 修的那个坑」 |
-| 卡片槽位 | `settings.plugin.item` + `ctx.settingsScope` | `plugins.row.config`（key = `<包名>#<行 id>`）+ 页面传入的 `form`（`state` + `mutate`） |
-| 卡片位置 | 设置 → 插件 → 插件配置 | 左侧「插件」→ 已安装 → 该包 → 组件行「配置」 |
-| 设置落在 | `<DSH_HOME>/settings.yaml` | `<DSH_HOME>/profiles/<profile>/cordis.patch.yml` |
+### 0.3.1 修过的那个坑，与 0.3.3 的清理
 
-分流全靠**服务探测**，没有版本号判断：host 半边看 settings 服务上有没有 `configure`（有就新、没有就旧），
-`readSettings()` 同样先问 `get`、没有再问 `describe`（`src/route.js`）；
-浏览器半边分别 `ctx.inject(['settingsScope'], …)` 与 `ctx.inject(['configForms'], …)`，两边的 `inject` 只会有
-一边被满足，所以只会注册一张卡片。
-
-### 0.3.1 修的那个坑：0.1.7 上 `web_search` 报 "registered but unavailable"
-
-0.3.0（也就是「同时支持两套 settings」那版）只把**自己这一条的 Config** 迁到了 0.1.7 的模型，
-**读别人的命名空间**那条路忘了迁：`readSettings()` 仍然只调 `settings.get(ns)`，而 0.1.7 的
-`@deepseek-ai/dsh-settings` 里根本没有 `get`（`installSection` 也没了），异常被 `try/catch` 吞掉后一律返回
-`undefined`。后果是 `llm-pi-ai` 永远读不到，`resolveTarget()` 拿不到 `baseURL` / `apiKeyEnv`，
-`available()` 恒为 `false`，于是每次搜索都变成：
+0.3.0 只把**自己这一条 Config** 迁到「Config 即设置项」的模型，**读别人的命名空间**那条路忘了迁：
+`readSettings()` 仍在调 `settings.get(ns)`，而 0.2.x 的 `@deepseek-ai/dsh-settings` 里没有 `get`
+（`installSection` 也没有），异常被 `try/catch` 吞掉后一律返回 `undefined`。后果是 `llm-pi-ai` 永远读不到，
+`resolveTarget()` 拿不到 `baseURL` / `apiKeyEnv`，`available()` 恒为 `false`：
 
 ```
 Error: configured web provider "clinepass" is registered but unavailable
     (WEB_PROVIDER_CONFIGURED_UNAVAILABLE)
 ```
 
-只发生在 dsh 0.1.7+ 上；0.1.5 因为 `get` 还在，行为不变。修法是给 `readSettings()` 加上 0.1.7 的读法
-（`settings.describe()` 的 `{ ns, value }` 投影，内部已经把 volatile 引用摊平）：
-
-```js
-if (typeof settings.get === 'function') { /* 0.1.5 */ }
-return describedSettings(settings, ns);      // 0.1.7: describe() 里按 ns 找 value
-```
+0.3.1 给 `readSettings()` 补上了 `describe()` 读法；**0.3.3 起只保留这一条读法**，`get()` 分支已删除——
+它在本机之所以“看起来能用”，是因为本地装了把 legacy settings API 补回去的补丁（`dsh-purge`）；干净安装上没有 `get`，
+plugin 依赖它就是依赖自己的兜底路径。现在两条路径合一，干净安装与打了补丁的安装行为一致。
 
 **升级后仍然报这个错、又不能马上重装插件时**，可以先在 profile 的 `cordis.patch.yml` 里把路由钉死
 （`provider` / `model` 是 volatile 字段，写在 patch 里同样生效；`baseURL` / `apiKeyEnv` 是普通字段，
@@ -163,7 +143,7 @@ return describedSettings(settings, ns);      // 0.1.7: describe() 里按 ns 找 
     apiKeyEnv: CLINEPASS_API_KEY
 ```
 
-代价是这条搜索不再跟随 UI 里选的模型；把插件升到 0.3.1 后删掉这段即可恢复跟随。
+代价是这条搜索不再跟随 UI 里选的模型；把插件升级后删掉这段即可恢复跟随。
 
 ## 配置
 
@@ -187,8 +167,8 @@ return describedSettings(settings, ns);      // 0.1.7: describe() 里按 ns 找 
 > 这里**没有**「把搜索记录写进会话日志」的开关：DSH 会因此拒绝加载整份会话，原因见《为什么不再写会话日志事件》。
 
 绝大多数情况什么都不用配：会话模型是 `clinepass` 这类 OpenAI 兼容网关时，路由信息全部来自
-`llm-pi-ai.providers.<route>`（`api` / `baseURL` / `apiKeyEnv`）——0.1.5 通过 `settings.get('llm-pi-ai')` 读，
-0.1.7 通过 `settings.describe()` 读（见《0.3.1 修的那个坑》）。
+`llm-pi-ai.providers.<route>`（`api` / `baseURL` / `apiKeyEnv`），通过 `settings.describe()` 的
+`{ ns, value }` 投影读（见《0.3.1 修过的那个坑，与 0.3.3 的清理》）。
 
 ## 工具选择与花费
 
@@ -276,70 +256,63 @@ Sources:
 
 ## 已验证到哪一步
 
-- **单元测试** `npm test`：**61 项，全绿、0 skipped**。解析与路由解析 **22 项**（中文标点、markdown 链接、去重、截断、会话跟随、切换模型、协议不兼容、显式钉死、fallback、
-  以及 0.1.7 的读法：只有 `describe()` 没有 `get()` 时仍能解出路由与端点、`agent-default-model` 同样可读、投影里没有该命名空间时仍判不可用），
-  搜索路径与修复工具 15 项（搜索不写会话事件、不可用路由不碰会话、schema 不再暴露写入开关、请求体带 `tools[].config`、
-  四个工具各自的 config 字段映射、未知 tool id 只发裸 id、system prompt 的搜索次数上限、未支持事件识别、
-  信封标记、帧结构保持、dry-run、活跃会话与 `session.lock` 保护、只扫描当前代际），
-  **host 半边 5 项**（0.1.7 走 `configure({auto:false})` 并读活引用、0.1.5 走 `installSection` 且优先用 section、
-  两套都没有时退回组合条目、`normalizeConfig` 摊平引用/透传普通值、可编辑字段标记为 volatile），
-  浏览器半边 19 项（两条注册路径各一项：0.1.7 的 `plugins.row.config` 键 `<包>#<行>`、0.1.5 的 `settings.plugin.item` 且等 ledger；
-  0.1.7 页面视图渲染字段、summary 视图不需要 form、未服务的条目渲染空、只读条目禁用全部按钮；写入计划器、默认值即清除覆盖、
-  默认折叠只渲染 header、命名空间缺失时的降级渲染、样式表只读主题 token 且全部命名空间化、Tag/Switch/chevron 走基座模块、
-  折叠 chevron 依次回退 `IconChevronDownOutline14` → `IconChevronDownOutlineMedium` → `IconChevronDownOutlineRegular`，
-  三个名字都没有时只少画一个图标、header 照常渲染、
-  布尔字段是「左标签 + 右开关」的 toggle row、搜索工具是单选 radio 列表且页面里没有 select、只提供文档里的四个工具、
-  搜索工具那一栏明说次数上限只是建议）。
-  其中 12 项渲染测试需要 `react-dom`，缺失时优雅跳过；`npm run link-runtime -- --with-react` 会把它一并装好，
-  所以本机现在报的是 **61 通过 + 0 跳过**（此前闭包来自旧的全局 dsh 安装，只能跑出 49 通过 + 10 跳过）。
-- **真实 dsh 0.2.0-rc.2 验收（0.3.2）**：桌面版 0.2.0-rc.2（内核 `@deepseek-ai/dsh` / `dsh-web` / `dsh-settings`
-  同为 0.2.0-rc.2）上**不改一行代码**即可运行。host 半边：`include:dsh-web-search` 正常挂载，
-  `ctx.web.registerSearchProvider` 与 `settings.configure({ auto: false }, owner)` 签名未变，`settings.describe()`
-  仍返回 `{ ns, value, user, writable }`（即 `readSettings()` 的 0.1.7 那条读法继续有效），`llm-pi-ai` 命名空间与
-  `providers.clinepass` 的 `api` / `baseURL` / `apiKeyEnv` 完好，真发一次 `web_search` 返回带来源的回答。
-  client 半边：用 CDP 走真实 GUI（左侧「插件」→ 已安装 → 组件行右侧的配置按钮）确认卡片仍渲染出**全部 8 个字段**
-  （1 开关 / 4 单选 / 3 数字 / 3 文本 / 1 文本域 + 三颗底部按钮），`plugins.row.config` 槽由 plugin manager 声明并
-  渲染 `dsh-web-search#dsh-web-search`，控制台 0 error；基座 `Tag({ tone })` 与
-  `Switch({ checked, onChange, label, disabled })` 签名未变，卡片用到的 12 个 `--dsw-alias-*` token 在 0.2.0 全部存在。
-  **0.2.0 唯一改掉的名字是图标**：`IconChevronDownOutline14` 被 `IconChevronDownOutlineMedium` / `Regular` 取代
-  （在整个载荷里 0 次出现），它只出现在 0.1.5 那张卡的 header 里，所以此前不触发；0.3.2 起按名字依次回退。
-- **真实 0.1.7 settings 实现（0.3.1 的回归验证）**：不启动整个 harness，而是直接把**真实的**
+- **单元测试** `npm test`：**59 项，全绿、0 skipped**。解析 7 项（中文标点、markdown 链接、裸 URL、去重、截断、标题、
+  非法 scheme）；路由 15 项（会话跟随、切换模型、`describe()` 唯一读法、`agent-default-model` 兜底、协议不兼容、
+  显式钉死、按路由覆盖、fallback、可用性判定、坏 URL、没有 settings 服务时不崩）；搜索路径与修复工具 15 项
+  （搜索不写会话事件、不可用路由不碰会话、schema 不再暴露写入开关、`tools[].config`、四个工具各自的字段映射、
+  未知 tool id 只发裸 id、system prompt 的次数上限、未支持事件识别、信封标记、帧结构保持、dry-run、
+  活跃会话与 `session.lock` 保护、只扫描当前代际）；**host 半边 7 项**（`configure({auto:false})`、活引用、
+  无 settings 服务时退回组合条目、`ready()` 与 `available()` 一致且不抛、选中的是别人时给出的诊断文案、
+  挂载时与 `web` 条目变更时各报一次、`normalizeConfig` 摊平引用、volatile 字段就是卡片那 8 个）；
+  **浏览器半边 13 项**（注册 `plugins.row.config` 且只等 `configForms`、写入计划器、默认值即清除覆盖、
+  只提供文档里的四个工具、次数上限只是建议、样式表只读主题 token 且全部命名空间化、页面视图渲染 8 个字段、
+  summary 视图不渲染表单、未服务/加载中/只读降级、布尔字段是「左标签 + 右开关」、工具是单选 radio 且无 `<select>`、
+  被覆盖字段带 Tag 与「恢复默认」）。渲染类测试要 `react-dom`：放在 `.card-test-modules/` 下
+  （`npm install --prefix .card-test-modules --no-save react@18 react-dom@18`，已在 `.gitignore` 里）就自动生效，
+  缺了则优雅跳过；本机现在是 **59 通过 + 0 跳过**。
+- **真实 dsh 0.2.2-rc.1 验收（0.3.3）**：桌面版内核 `@deepseek-ai/dsh-desktop-runtime 0.2.2-rc.1` 上：
+  - host 半边：`include:dsh-web-search` 为 `enabled: true / fiberPhase: active`；`ctx.web.registerSearchProvider`、
+    `WebRuntime.Config { searchProvider, fetchProvider }`（两个字段仍 volatile）、`settings.configure({auto:false}, fiber)`
+    全部存在；`settings.describe()` 仍返回 `{ ns, value, user, writable }`，`llm-pi-ai` 的 `providers.clinepass`
+    与 `agent-default-model` 都能从投影里读到。
+  - **真发一次 `web_search`**：返回带真实来源的回答，说明「注册 → 会话模型跟随 → 从 `llm-pi-ai` 解端点与
+    `apiKeyEnv` → 凭据解析 → 网关请求 → 解析来源」整条链在 0.2.2-rc.1 上通。此时 `deepseek-official` 也注册着
+    （`include:web-search-deepseek` 同样 active），没有撞 `WEB_PROVIDER_AMBIGUOUS`，即 bundle 层的
+    `searchProvider: clinepass` 覆盖生效。
+  - client 半边：`Slots.listSubTree` 显示 `plugins.row.config` 里的 occupant `dsh-web-search#dsh-web-search`、
+    `active: true`——说明 `window.__ModuleLoader__.load` 工厂执行、`require('react')` 与
+    `require('@deepseek-ai/dsh-client-ui-primitives')` 都从基座模块表解析成功；页面派发用的 key
+    （`rowConfigKey(pkg.name, row.rowId)`) 与注册 key 完全相同。
+  - 0.2.2 的 web seam 新增了**可选**的 `ready(llmProvider)` / `web.searchReady()`，`dsh-tool-web` 用它决定
+    这一步要不要把 `web_search` 交给模型；0.3.3 实现了它（见《限制与注意事项》）。
+- **真实 0.2.x settings 实现（0.3.1 的回归验证，0.3.3 保留）**：不启动整个 harness，而是直接把**真实的**
   `SettingsForms.prototype.describe`（未打桩，只喂给它一个 `configEditor.configuration()` 的替身）跑在**真实的**
   `@deepseek-ai/dsh-llm-pi-ai` 的 Config schema 与本机 profile 的真实路由值上：`describe()` 输出
   `[{ ns: 'llm-pi-ai', value: { providers: { clinepass: { baseURL: 'https://api.cline.bot/api/v1' } } } }]`。
-  再把这同一个 ctx 分别喂给 HEAD（0.3.0）与修好后的 `resolveTarget()`：
-  0.3.0 在 0.1.7 服务下 `available() === false`（就是那条 `registered but unavailable`），修好后同一个 ctx
-  `available() === true`、端点 `https://api.cline.bot/api/v1/chat/completions`、来源 `session request header`；
-  0.1.5 的 `get(ns)` ctx 在修改前后都照常解出。**未做**的验证：真实 GUI 里重启 harness 后再跑一次 `web_search`
-  （插件是 `file:` 装进 profile 的硬链接副本，改仓库代码要重新 `dsh plugin add` + 重启才生效）。
-- **真实 GUI 验收（与内置卡片逐项对齐）**：用本机 Chrome 走 CDP 直连正在运行的 `dsh web`（临时 profile + 用本机
-  `client-connection/browser-session` 签名密钥铸的会话 cookie，密钥不出本机），把这张卡和内置「网页搜索」卡放在**同一页**逐项量：
-  折叠态两张卡都是 **564×75**（header padding 14/16、gap 12、标题 15px/600、摘要 13px、chevron 14×14 且 `viewBox="0 0 14 14"`）；
-  展开态 body 的 border-top / margin 16 / padding-bottom 8、字段 padding 12、label 13px/500、hint 12px、
+  喂给 0.3.0 的 `resolveTarget()` 时 `available() === false`（就是那条 `registered but unavailable`），
+  修好后同一个 ctx `available() === true`、端点 `https://api.cline.bot/api/v1/chat/completions`、
+  来源 `session request header`。
+- **真实 GUI 验收（0.2.0-rc.2，与内置卡片逐项对齐）**：用本机 Chrome 走 CDP 直连正在运行的 `dsh web`（临时 profile +
+  用本机 `client-connection/browser-session` 签名密钥铸的会话 cookie，密钥不出本机），把这张卡和内置「网页搜索」卡
+  放在**同一页**逐项量：折叠态 header padding 14/16、gap 12、标题 15px/600、摘要 13px；展开态 body 的
+  border-top / margin 16 / padding-bottom 8、字段 padding 12、label 13px/500、hint 12px、
   控件 530×36（radius 8 / border 1px / padding 12 / font 13）、footer 与保存按钮（font 13、padding 5/14、
-  bg = label-primary、文字 = bg-layer-3）**逐项相同**；「未保存」Tag 就是同一个基座组件，实测 49×19 / 11px / radius 999px 与内置一致；
-  切到 `body[data-ds-dark-theme]` 后两张卡的 token 一起变（卡片 44,44,46 / 边框 67,69,74 / 控件 53,54,56 / 文字 249,250,251），
-  控制台 **0 error、0 warning**；位置始终在内置四张卡片（终端 / Agent 循环 / Subagent / 网页搜索）之后。
-  两个控件的形态也在同一页对着内置 Subagent 卡量过：开关行 `justify-content:space-between` / `align-items:flex-start` /
-  `gap:16px`、开关外框 36×20 且贴右（右间距 0px），与内置的 toggle row 完全一致；搜索工具的单选组框
-  （border 1px rgba(0,0,0,.16)、radius 8、padding 10、gap 6、max-height 280、overflow auto）与内置 Subagent 卡
-  的选择列表 fieldset **逐项相同**，行内 padding 6 / radius 6 / gap 8 / 原生 radio 13×13 也一致；
-  4 个选项同一个 `name`、只有一个是 checked，页面里 `<select>` 数量为 0。
-- **真实 GUI 验收（dsh 0.1.7，隔离实例）**：另起一个 `DSH_HOME`（临时目录、临时 profile、3091 端口）跑真实的
-  `dsh 0.1.7-rc.2 web`，装上本插件后用 CDP 走完真实路径：左侧「插件」列出 `dsh-web-search v0.3.0`（已安装 1 个）→
-  组件行 `dsh-web-search` 的「配置」→ 页面渲染出本卡的 **8 个字段 / 4 个单选（默认项选中）/ 1 个开关行 /
-  6 个文本框 / 三颗底部按钮**，样式表已注入 `style[data-plugin-css]`；改为 `vercel:parallel_search` 点保存后显示
-  「已保存（1 项）。」，且 profile 的 `cordis.patch.yml` 里确实出现
-  `- id: dsh-web-search\n  config:\n    tool: vercel:parallel_search`；
-  全过程 **0 error、0 warning**。（验证用的临时实例与临时 home 已删除，没有碰你正在跑的那个 dsh。）
+  bg = label-primary、文字 = bg-layer-3）**逐项相同**；切到 `body[data-ds-dark-theme]` 后 token 一起变，
+  控制台 **0 error、0 warning**。开关行与单选组的形态也对着内置 Subagent 卡量过：开关行
+  `justify-content:space-between` / `align-items:flex-start` / `gap:16px`、开关贴右；单选组框
+  radius 8 / padding 10 / gap 6 / max-height 280、行内 padding 6 / radius 6、原生 radio 13×13。
+  **0.2.x 改掉的名字只有图标**（`IconChevronDownOutline14` → `Medium` / `Regular`），0.3.3 已经把用到它的那张
+  0.1.x 卡片连同整条兼容分支一起删掉，所以不再需要回退链。
+  **本轮（0.3.3）没有复测像素**：卡片改动只在 DOM 层面用真实 React 渲染断言（见上面的渲染测试），
+  截图级复测要单独授权。
 - **真实 seam 集成** `node test/live-gateway.mjs`：用真实的 `WebRuntime`（`@deepseek-ai/dsh-web`）注册本供应商，
   按 `searchProvider: clinepass` 选中，向 `api.cline.bot` 实发一次搜索，断言来源非空且 `maxResults` 生效。
 - **真实网关实测（搜索次数与 tools[].config）**：走插件自己的 `searchWithGateway` 打真实网关，
   perplexity 与 parallel 各自 200 / `finish_reason: stop`、来源各 10 条、没有截断提示；
   `gatewayToolCalls` 分别为 4 与 2，`gatewayCost` 分别为 **$0.0298 / $0.0202**
   （加「最多 3 次搜索」之前的同一类问题是 6 / 4 次、$0.0430 / $0.0361）。
-- **真实 DSH 端到端**：临时 profile（`@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-headless` + 本插件）跑一次真实任务，带回真实来源链接。
-  端到端跑通后**不再产生** `web/clinepass-search-request` 事件；早期版本写进会话日志的那些事件已用
+- **真实 DSH 端到端**：临时 profile（`@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-headless` + 本插件）跑一次真实任务，
+  带回真实来源链接。端到端跑通后**不再产生** `web/clinepass-search-request` 事件；早期版本写进会话日志的那些事件已用
   `tools/repair-session-events.mjs` 补上 `ignorable: true`（见《为什么不再写会话日志事件》），会话可以正常重新加载。
 
 ## 限制与注意事项
@@ -349,12 +322,25 @@ Sources:
   已被写坏的会话用下一节的工具修复。
 - **只对 OpenAI 兼容且支持供应商端工具的路由生效。** 路由声明了非 chat-completions 协议（例如 `anthropic-messages`）时，
   本供应商直接报告不可用——这是有意的：让网关工具 id 发给不懂它的端点只会得到难懂的错误。
-- **切到非网关模型时 `web_search` 会报 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`。**
-  两种处理：在设置里配 `fallback.provider` / `fallback.model` 钉一个网关路由兜底；
-  或把 profile 的 `cordis.patch.yml` 里 `web.searchProvider` 改回 `deepseek-official`。
+- **切到非网关模型时 `web_search` 不再出现在工具列表里。** 0.3.3 实现了 web seam 的可选钩子
+  `ready(llmProvider)`：`dsh-tool-web` 在每一步用 `ctx.web.searchReady()` 决定要不要把 `web_search` 交给模型，
+  路由解不出（例如当前模型是非 chat-completions 协议）时工具直接不出现，而不是让模型调了再吃一个
+  `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`。想在这种情况下仍有搜索能力，两种做法：在设置里配
+  `fallback.provider` / `fallback.model` 钉一个网关路由兜底；或把 profile 的 `cordis.patch.yml` 里
+  `web.searchProvider` 改回 `deepseek-official`。
+- **`web.searchProvider` 被改走时插件会静默失效——0.3.3 起会打一条警告。** 供应商选择是「显式 id 优先」，
+  而内置的「网页搜索」设置页（`@deepseek-ai/dsh-client-ui-settings-web-search`）的 Search API 开关写的就是
+  `web.searchProvider`。一旦在那里切到 DeepSeek，profile 的设置覆盖会压过本插件的 bundle 层，
+  搜索看起来照常成功、其实走的是内置供应商。插件在挂载时与每次 `settings/updated`（ns = `web`）时比对一次选中项，
+  不指向 `clinepass` 就往 host 日志写一条带修法的警告（不会再静默）。
 - **凭据只从 `ctx.credentials` 与启动环境读。** 密钥不会进日志、不会进会话记录（记录里只有路由、耗时、费用、检索次数）。
 - **`web_fetch` 不受影响**，仍然走内置的 `http` 供应商。
 - **供应商端工具是一次完整的模型回合**：延迟实测 8–15 秒，费用按上面那张表计。
+- **`node_modules` 必须指向**同一个**已安装的 DSH。** profile 用 junction 把本包链进来，模块从本目录运行，
+  裸导入靠本目录的 `node_modules` 解决；DSH 换安装路径或重装后要重跑 `node tools/link-dependency-root.mjs`，
+  否则报 `ERR_MODULE_NOT_FOUND`。**不要**用 `tools/link-harness-runtime.mjs` 抽真目录来替代它：
+  它会拆掉 junction 再建普通目录，闭包来源一旦认错（例如机器上还装着别的 Electron 包）就会把 `@deepseek-ai/*`
+  抽成一堆无关文件，插件当场加载失败。
 - 插件不修改任何原生包文件，卸载后原样恢复。
 
 ## 为什么不再写会话日志事件
@@ -393,19 +379,12 @@ node tools/repair-session-events.mjs repair --session 80bad975-cea1-48af-b509-f2
 
 ## 卡片（浏览器半边）
 
-这个插件是**双面**的，而且两套设置模型各有一张卡：
+这个插件是**双面**的：host 半边注册供应商，浏览器半边贡献一张设置卡（0.2.x 只有这一张）。
 
-- **dsh 0.1.7**：`lib/client.js` 往 `plugins.row.config` 注册，key 是 `dsh-web-search#dsh-web-search`。
-  页面（插件管理器）自己画标题、图标、面包屑，并把该条目的 `form`（`state` + `mutate`）当 prop 传进来；
-  列表里还会调用 `summary` 视图要一句摘要，所以这张卡在**行未展开时**返回一句话。
-- **dsh 0.1.5**：往 `settings.plugin.item` 注册，key 是 `dsh-web-search`，自己绑 `ctx.settingsScope`；
-  卡片是 `<li>` + 带 `aria-expanded` 的 header 按钮（标题 / 摘要 / 未保存标记 / chevron），**默认折叠**，
-  保存成功后自动收起，失败则保持展开。
-
-0.1.5 那张卡的**排序规则**：设置页按 ledger 顺序渲染，而本插件的 `apply` 比设置插件自己注册卡片更早，
-所以「立刻注册」会把这张卡顶到所有内置卡片之前。实现改为**等 ledger 里已经有卡片再入列** ——
-于是它排在本机加载时已有的那些配置之后，而不是钉死在最后（之后再注册的卡片依然排在它后面）。
-0.1.7 不涉及这个问题：位置由插件页面自己决定。
+- `lib/client.js` 往 `plugins.row.config` 注册，key 是 `dsh-web-search#dsh-web-search`
+  （页面用 `rowConfigKey(pkg.name, row.rowId)` 拼同一个 key）。
+- 页面（插件管理器）自己画标题、图标、面包屑、折叠与位置，并把该条目的 `form`（`state` + `mutate`）当 prop 传进来；
+  列表里还会调用 `summary` 视图要一句摘要，所以这张卡在**行未展开时**只返回一句话。
 
 卡片可改的字段：`enabled`、`tool`（文档里的 4 个网关搜索工具）、`maxSources`、`timeoutMs`、`maxTokens`、
 `provider` / `model`（钉死路由，可选）、`instructions`。改完点保存；字段恢复成默认值时写的是 `unset`
@@ -417,8 +396,7 @@ Subagent 卡的选择列表来（原生 radio，不做自定义绘制）。
 
 浏览器半边是**手写的** `lib/client.js`，按所有插件 bundle 的加载格式（`window.__ModuleLoader__.load({ id, factory })`）
 写死，所以本仓库没有构建步骤、也不依赖 npm 上的任何运行时包；它用基座模块表里的 `react` 与
-`@deepseek-ai/dsh-client-ui-primitives`，跨插件协作一律走 cordis 服务或槽位（`ctx.slots`、0.1.5 的
-`ctx.settingsScope`、0.1.7 的 `ctx.configForms` 探测）。
+`@deepseek-ai/dsh-client-ui-primitives`，跨插件协作一律走 cordis 服务或槽位（`ctx.slots` 与 `ctx.configForms`）。
 
 > 改了浏览器半边的**内容**只要刷新页面（必要时 Ctrl+Shift+R）就生效：bundle 由 Host 每次从磁盘读，
 > 实测改完在已运行的 `dsh web` 里直接看到新样式与新文案。只有**增删 bundle 本身**
@@ -444,7 +422,7 @@ namespace **什么都不渲染**（`tab-store` 的原话：*A served namespace n
 于是这张卡的做法是：
 
 1. `require('@deepseek-ai/dsh-client-ui-primitives')` —— 拿到的是内置卡片用的**同一个实例**，用它渲染
-   「未保存」`Tag`、布尔字段的 `Switch`、header 的 `IconChevronDownOutline14`；
+   被覆盖字段的 `Tag` 与布尔字段的 `Switch`；
 2. 其余 chrome 全部用宿主的主题 token（`--dsw-alias-*`）写，规则与内置卡片**一条对一条**（数值取自带内的
    `PluginCard.module.css` / `fields.module.css`，不是目测），并以 `style[data-plugin-css]` 注入、域名限定在 `.dswwsc-*`。
    好处是换主题、切深浅色时卡片跟着变：颜色全是 token，样式表里**没有任何十六进制或 rgba 字面量**
@@ -456,9 +434,11 @@ namespace **什么都不渲染**（`tab-store` 的原话：*A served namespace n
 ## 开发
 
 ```powershell
-# 本仓库是纯 ESM JS（无构建步骤）。测试要把 DSH 的模块闭包解析出来，两种方式任选：
-npm run link-root        # 推荐：自动探测已安装 DSH 的模块闭包，给 node_modules 建一个目录联接（不复制文件）
-npm run link-runtime -- --asar "<DSH 安装目录>\resources\app.asar" --with-react   # 或者：从 app.asar 抽一份真目录
+# 本仓库是纯 ESM JS（无构建步骤）。测试要把 DSH 的模块闭包解析出来：
+npm run link-root             # 给 node_modules 建一条指向已安装 DSH 的 junction（不复制文件）
+
+# 渲染测试要 react-dom（源码包里没有，Web UI 是预构建产物）：
+npm install --prefix .card-test-modules --no-save react@18 react-dom@18
 
 npm test                      # 单元测试（不花钱）
 node test/live-gateway.mjs    # 真实网关 + 真实 seam（会花一次搜索的钱）
@@ -470,29 +450,28 @@ node test/live-gateway.mjs    # 真实网关 + 真实 seam（会花一次搜索�
 **可读的 package.json** 存在（悬空链接不算数），然后建 `node_modules` 联接并当场验证解析。
 DSH 升级后重跑一次即可，联接跟着新安装走；也可以 `npm run link-root -- --json` 拿机器可读结果。
 
-`link-runtime` 按**真实 import 图**把 `@deepseek-ai/*` 及其传递依赖从 Electron 的 `app.asar` 抽进 `node_modules/`
-（当前闭包 22 个包 / 877 个文件，来源与版本记在 `node_modules/.dsh-harness-runtime.json`）。
-之所以不从 npm 装：registry 上的 `@deepseek-ai/dsh-web` 还停在 `0.0.1-rc.1`，和内核版本对不上。
-每次升级 DSH 后重跑一次即可（加 `--clean` 先清空再抽）。它**先拆掉 `node_modules` 上的目录联接、再建真目录**，
-不会顺着旧联接把文件写进共享的 profile 目录——早先的联接指向已被卸载的全局 dsh 与旧 monorepo 检出，
-正是 `npm test` 报 `ERR_MODULE_NOT_FOUND` 的原因。
+渲染测试会在 `DSH_CARD_TEST_MODULES`、`.card-test-modules/`（git 已忽略）、`$DSH_HOME/profiles/*`
+这几处依次找 `react` / `react-dom`；都找不到时这 13 项优雅跳过，其余测试照跑。
 
-源码包里没有 `react` / `react-dom`（Web UI 是预构建产物），`--with-react` 会额外装一份并复制进来，
-让 12 项渲染测试真正跑起来；不加这个参数时它们会优雅跳过（`DSH_CARD_TEST_MODULES` 仍可指向任意一份自备的模块目录）。
+> **不要**拿 `tools/link-harness-runtime.mjs` 替代 `link-root`：它按 `app.asar` 抽真目录，会先**拆掉**
+> `node_modules` 上的 junction。0.3.3 之前就踩过一次：它自动探测到了机器上另一个 Electron 包的 `app.asar`，
+> 抽出来的闭包里没有 `@deepseek-ai/*`，插件当场加载失败。只有当你手上确实有**这份** DSH 的 `app.asar`
+> 且明确要用真目录时才加 `--asar <path>`。
 
 | 文件 | 作用 |
 |---|---|
-| `src/index.js` | 插件入口：`name` / `inject` / `apply` / 设置命名空间注册。 |
-| `src/config.js` | schemastery 配置 schema 与常量。 |
-| `src/route.js` | 选模型 + 解端点 + 取凭据（无网络调用）。 |
+| `src/index.js` | 插件入口：`name` / `inject` / `apply` / `configure({auto:false})` / 选中项诊断。 |
+| `src/config.js` | schemastery 配置 schema、volatile 字段与常量。 |
+| `src/route.js` | 选模型 + 解端点 + 取凭据（无网络调用，只走 `settings.describe()`）。 |
 | `src/gateway.js` | 那一次 HTTP 请求、错误分类、回答与来源的组装。 |
 | `src/parse.js` | `Sources:` 段落切分、markdown/裸 URL 提取、去重与标题。 |
 | `src/prompt.js` | 搜索指令（固定收尾形状是解析契约的一部分）。 |
-| `src/provider.js` | `WebSearchProvider` 实现：`available()` / `search()`（只读 seam，不写会话日志）。 |
+| `src/provider.js` | `WebSearchProvider` 实现：`available()` / `ready()` / `search()`（只读 seam，不写会话日志）。 |
 | `cordis.patch.yml` | bundle 层：改 `web.searchProvider` + 插入插件行。 |
-| `lib/client.js` | 浏览器半边：手写的加载器 bundle，注册设置卡片（0.1.7+ 的 `plugins.row.config` / 0.1.5 的 `settings.plugin.item`）。 |
+| `lib/client.js` | 浏览器半边：手写的加载器 bundle，注册 `plugins.row.config` 卡片。 |
 | `tools/repair-session-events.mjs` | 扫描/修复被自定义会话事件写坏的会话日志（补 `ignorable: true`，带备份与自检）。 |
-| `tools/link-harness-runtime.mjs` | 从已安装的 DSH 载荷里抽出模块闭包到 `node_modules/`，供本地测试解析 `@deepseek-ai/*`。 |
+| `tools/link-dependency-root.mjs` | 给本目录建 `node_modules` junction 指向已安装 DSH（**推荐**的依赖闭包来源）。 |
+| `tools/link-harness-runtime.mjs` | 从 `app.asar` 抽真目录；只在明确需要时用（会拆掉 junction）。 |
 | `install.mjs` | 装/卸到某个 profile。 |
 
 ## 标注为 DSH 插件

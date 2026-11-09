@@ -1,7 +1,12 @@
 /**
  * Live end-to-end check: the real ctx.web seam, the real plugin entry, the real
- * ClinePass gateway. It reads the machine's own settings and credential store,
- * so it exercises exactly the resolution path a running dsh uses.
+ * ClinePass gateway. It reads the machine's own profile patch and credential
+ * store, so it exercises exactly the resolution path a running dsh uses.
+ *
+ * The settings service is stubbed at the seam it exposes on dsh 0.2.x: the
+ * `describe()` projection, whose rows carry `{ ns, value }`. Both namespaces the
+ * route reads are composed in the profile patch, so this script builds those
+ * rows from the same patch the launcher reads.
  *
  * Costs the configured provider a small amount of quota (one search turn),
  * which is why it is not part of `node --test test/`.
@@ -9,7 +14,7 @@
  * Run: node test/live-gateway.mjs [query]
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
@@ -18,13 +23,34 @@ import { WebRuntime } from '@deepseek-ai/dsh-web';
 import { apply as applyPlugin, Config, name as pluginName, inject as pluginInject } from '../src/index.js';
 
 const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh');
-const settings = yaml.load(readFileSync(join(dshHome, 'settings.yaml'), 'utf8'));
+const profileDir = process.env.DSH_PROFILE_DIR ?? join(dshHome, 'profiles', process.env.DSH_PROFILE ?? 'desktop');
+
+/** Every `config:` block one loader patch list declares, keyed by patch id. */
+function sectionsOf(patchPath) {
+	const sections = {};
+	if (!existsSync(patchPath)) return sections;
+	const entries = yaml.load(readFileSync(patchPath, 'utf8'));
+	const visit = (list) => {
+		if (!Array.isArray(list)) return;
+		for (const entry of list) {
+			if (entry?.insert !== undefined) visit(entry.insert);
+			const id = entry?.id;
+			if (typeof id !== 'string') continue;
+			if (entry.config !== null && typeof entry.config === 'object' && !Array.isArray(entry.config)) sections[id] = entry.config;
+			if (Array.isArray(entry.config)) visit(entry.config);
+		}
+	};
+	visit(entries);
+	return sections;
+}
+
+const settings = { ...sectionsOf(join(dshHome, 'settings.yaml')), ...sectionsOf(join(profileDir, 'cordis.patch.yml')) };
 const credentials = yaml.load(readFileSync(join(dshHome, '.credentials.yaml'), 'utf8'));
 const refs = credentials?.refs ?? {};
 const selected = settings['agent-default-model'];
 
 if (typeof selected?.provider !== 'string' || typeof selected?.model !== 'string') {
-	throw new Error('settings.yaml has no agent-default-model provider/model to follow');
+	throw new Error('the profile patch has no agent-default-model provider/model to follow');
 }
 const route = settings['llm-pi-ai']?.providers?.[selected.provider];
 if (route === undefined) throw new Error('no llm-pi-ai profile for route ' + selected.provider);
@@ -37,7 +63,10 @@ console.log('endpoint     :', route.baseURL, '(api ' + route.api + ')');
 console.log('credential   :', apiKeyEnv, '(resolved, ' + apiKey.length + ' chars)');
 
 const ctx = new Context();
-const web = new WebRuntime(ctx, { searchProvider: 'clinepass' });
+// The loader parses the seam's volatile fields into stable references, so a
+// hand-built WebRuntime has to carry the same shape: `{ get() }`.
+const volatile = (value) => ({ get: () => value });
+const web = new WebRuntime(ctx, { searchProvider: volatile('clinepass'), fetchProvider: volatile('http') });
 
 const agent = {
 	session: { requestHeader: () => ({ config: { provider: selected.provider, model: selected.model } }) },
@@ -47,12 +76,13 @@ const agent = {
 // performs. `settings` and `credentials` are stubbed at the seam they expose.
 const pluginCtx = Object.create(ctx);
 pluginCtx.get = (service) => {
-	if (service === 'settings') return { get: (ns) => settings[ns] };
+	if (service === 'settings') return { describe: () => Object.entries(settings).map(([ns, value]) => ({ ns, value })) };
 	if (service === 'credentials') return { resolve: async (ref) => (typeof refs[ref] === 'string' ? { value: refs[ref] } : undefined) };
 	if (service === 'agents') return { currentInitiator: () => agent };
 	return ctx.get(service);
 };
 pluginCtx.inject = () => {};
+
 
 assert.equal(pluginName, 'dsh-web-search');
 assert.deepEqual(pluginInject, ['web']);

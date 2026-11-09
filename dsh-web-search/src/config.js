@@ -66,24 +66,6 @@ const Fallback = z.object({
 });
 
 /**
- * Mark one field as editable through the settings UI.
- *
- * dsh 0.1.7 redesigned settings: a plugin's own Config entry IS its settings
- * section, the service projects it, and it exposes exactly the fields marked
- * volatile() - each parsed into a stable reference the plugin reads with
- * .get(). dsh 0.1.5 has no volatile() and no such projection: its section is
- * built from this same schema through installSection(), where the field is an
- * ordinary value. Marking through this helper therefore means "editable in
- * whichever settings model the running harness has", and the same schema serves
- * both.
- * @param schema - the field's schema.
- * @returns the schema marked volatile where that exists.
- */
-function editable(schema) {
-	return typeof schema.volatile === 'function' ? schema.volatile() : schema;
-}
-
-/**
  * Read one parsed config field.
  *
  * A field marked volatile parses into a stable reference whose live value comes
@@ -100,10 +82,10 @@ export function fieldValue(field) {
 /**
  * Project a parsed Config onto plain values.
  *
- * Reads the fields through {@link fieldValue}, so one object serves both the
- * harness that parses volatile references (0.1.7) and the one that does not
- * (0.1.5), and a plain config object passes through unchanged. Every provider
- * path normalizes once at its boundary rather than unwrapping refs at each use.
+ * Reads the fields through {@link fieldValue}, so the loader's volatile
+ * references and a plain section (a test fixture, or a section handed in by
+ * anything that predates them) both answer plain values. Every provider path
+ * normalizes once at its boundary rather than unwrapping refs at each use.
  * @param config - the loader-validated Config, or a plain section.
  * @returns the same fields as plain values.
  */
@@ -115,17 +97,16 @@ export function normalizeConfig(config) {
 }
 
 /**
- * The card edits these fields. Everything unmarked stays ordinary
- * configuration, editable through the profile's Cordis patch (0.1.7) instead of
- * a form.
+ * The card edits the volatile fields. Every other field stays ordinary
+ * configuration, editable through the profile's Cordis patch instead of a form.
  */
 export const Config = z.object({
 	/** Master switch. false makes the provider report itself unavailable. */
-	enabled: editable(z.boolean().default(true)),
+	enabled: z.boolean().default(true).volatile(),
 	/** Force an LLM provider route instead of following the session. */
-	provider: editable(z.string()),
+	provider: z.string().volatile(),
 	/** Force a model id instead of following the session. */
-	model: editable(z.string()),
+	model: z.string().volatile(),
 	/** Chat-completions base URL; overrides route and llm-pi-ai resolution. */
 	baseURL: z.string(),
 	/** Wire protocol guard for a forced baseURL. */
@@ -141,9 +122,9 @@ export const Config = z.object({
 	/** Provider/model pair pinned for the fallback path. */
 	fallback: Fallback,
 	/** Provider-executed search tool id sent in tools[]. */
-	tool: editable(z.string().default(DEFAULT_TOOL)),
+	tool: z.string().default(DEFAULT_TOOL).volatile(),
 	/** Request timeout in milliseconds; one search is a full model turn. */
-	timeoutMs: editable(z.number().step(1).min(1000).default(90000)),
+	timeoutMs: z.number().step(1).min(1000).default(90000).volatile(),
 	/**
 	 * Upper bound on generated tokens for the search turn. 8192 is twice what a
 	 * dense answer with a source list actually needs (measured 3535 and 4176
@@ -152,13 +133,13 @@ export const Config = z.object({
 	 * calling agent's context - the answer becomes that agent's input on every
 	 * later turn.
 	 */
-	maxTokens: editable(z.number().step(1).min(1).default(8192)),
+	maxTokens: z.number().step(1).min(1).default(8192).volatile(),
 	/** Sampling temperature; omitted from the request while unset. */
 	temperature: z.number(),
 	/** Upper bound on sources returned to the seam (the seam caps again). */
-	maxSources: editable(z.number().step(1).min(1).default(10)),
+	maxSources: z.number().step(1).min(1).default(10).volatile(),
 	/** Extra guidance appended to the search instruction. */
-	instructions: editable(z.string()),
+	instructions: z.string().volatile(),
 });
 
 export default Config;

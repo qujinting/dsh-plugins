@@ -11,9 +11,8 @@
  *      then the agent-default-model setting,
  *   3. the llm-pi-ai settings namespace for that route's endpoint and key ref.
  *
- * Steps 2 and 3 read namespaces this plugin does not own, through whichever read
- * path the mounted settings service has (0.1.5's get(ns) or 0.1.7's describe()
- * projection) - see {@link readSettings}.
+ * Steps 2 and 3 read namespaces this plugin does not own, through the settings
+ * `describe()` projection - see {@link readSettings}.
  *
  * @module dsh-web-search/route
  */
@@ -47,12 +46,20 @@ export function isOpenAiChatApi(api) {
 }
 
 /**
- * Read one namespace out of the dsh 0.1.7 settings projection.
+ * Read one namespace out of the settings `describe()` projection.
  *
- * There the service owns no per-namespace accessor: a section IS a plugin Config
- * entry, and `describe()` is the only read path - the same call the settings page
- * makes. Each row carries the entry id as `ns` and its live value as `value`, with
- * volatile references already flattened, so a plain object type check is enough.
+ * The service owns no per-namespace accessor on dsh 0.2.x: a section IS a plugin
+ * Config entry, and `describe()` is the read path - the same call the settings
+ * page makes. Each row carries the entry id as `ns` and its live value as
+ * `value`, with volatile references already flattened, so a plain object type
+ * check is enough.
+ *
+ * One consequence worth knowing when a namespace goes missing: `describe()`
+ * projects only entries whose schema marks at least one field volatile(). Both
+ * namespaces this module reads (`llm-pi-ai`, `agent-default-model`) do, and a
+ * section that stopped doing so would silently leave the route unresolved -
+ * which is why {@link readSettings} missing is treated as "unavailable" rather
+ * than as "no route declared".
  *
  * @param settings - the settings service.
  * @param ns - the entry id to look for.
@@ -70,26 +77,19 @@ function describedSettings(settings, ns) {
  * Read one registered settings namespace, tolerating an absent settings service
  * or namespace.
  *
- * The two harness settings models expose different read paths, so this asks
- * whichever one is mounted, exactly like `apply()` does for the write side:
- * 0.1.5 served `get(ns)` for every installed section, 0.1.7 replaced it with the
- * `describe()` projection and has no `get` at all. Missing this is not a graceful
- * degradation: `llm-pi-ai` supplies the route's `baseURL` and `apiKeyEnv`, so a
- * read that always fails makes the provider report itself unavailable and every
- * `web_search` fails with WEB_PROVIDER_CONFIGURED_UNAVAILABLE.
+ * Missing this is not a graceful degradation: `llm-pi-ai` supplies the route's
+ * `baseURL` and `apiKeyEnv`, so a read that always fails makes the provider
+ * report itself unavailable and every `web_search` fails with
+ * WEB_PROVIDER_CONFIGURED_UNAVAILABLE.
  *
  * @param ctx - the plugin context.
- * @param ns - the settings namespace (the owning profile entry id on 0.1.7).
+ * @param ns - the settings namespace (the owning profile entry id).
  * @returns the namespace's current value, or undefined when nothing serves it.
  */
 export function readSettings(ctx, ns) {
 	const settings = ctx.get('settings');
 	if (settings === undefined || settings === null) return undefined;
 	try {
-		if (typeof settings.get === 'function') {
-			const value = settings.get(ns);
-			if (value !== null && typeof value === 'object') return value;
-		}
 		return describedSettings(settings, ns);
 	} catch {
 		return undefined;
@@ -193,8 +193,8 @@ function targetFor(ctx, config, selection) {
  * @returns the target to search with, or undefined when nothing is serviceable.
  */
 export function resolveTarget(ctx, config) {
-	// One boundary for the two config shapes: 0.1.7 parses editable fields into
-	// live references, 0.1.5 leaves them plain, and a plain object passes through.
+	// One boundary for both config shapes: the loader parses volatile fields into
+	// live references, while a plain section passes through unchanged.
 	const section = normalizeConfig(config);
 	if (section.enabled === false) return undefined;
 	const selected = sessionModelSelection(ctx);
