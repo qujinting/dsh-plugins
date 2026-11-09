@@ -456,12 +456,19 @@ namespace **什么都不渲染**（`tab-store` 的原话：*A served namespace n
 ## 开发
 
 ```powershell
-# 本仓库是纯 ESM JS（无构建步骤）。测试要把 DSH 的模块闭包解析出来，先从已安装的 DSH 里抽一份：
-npm run link-runtime -- --asar "<DSH 安装目录>\resources\app.asar" --with-react
+# 本仓库是纯 ESM JS（无构建步骤）。测试要把 DSH 的模块闭包解析出来，两种方式任选：
+npm run link-root        # 推荐：自动探测已安装 DSH 的模块闭包，给 node_modules 建一个目录联接（不复制文件）
+npm run link-runtime -- --asar "<DSH 安装目录>\resources\app.asar" --with-react   # 或者：从 app.asar 抽一份真目录
 
 npm test                      # 单元测试（不花钱）
 node test/live-gateway.mjs    # 真实网关 + 真实 seam（会花一次搜索的钱）
 ```
+
+`link-root` 按 `$DSH_HARNESS_MODULES` / `$DSH_HARNESS_INSTALL` 环境变量或常见安装根
+（`%LOCALAPPDATA%\Programs`、`Program Files`、`D:\apps`……）自动找 DSH，依次探测
+`resources/app/dsh/node_modules` 等几种闭包布局，并要求本插件的全部裸导入都以
+**可读的 package.json** 存在（悬空链接不算数），然后建 `node_modules` 联接并当场验证解析。
+DSH 升级后重跑一次即可，联接跟着新安装走；也可以 `npm run link-root -- --json` 拿机器可读结果。
 
 `link-runtime` 按**真实 import 图**把 `@deepseek-ai/*` 及其传递依赖从 Electron 的 `app.asar` 抽进 `node_modules/`
 （当前闭包 22 个包 / 877 个文件，来源与版本记在 `node_modules/.dsh-harness-runtime.json`）。

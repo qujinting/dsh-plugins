@@ -31,6 +31,7 @@
   },
   "scripts": {
     "link-runtime": "node tools/link-harness-runtime.mjs",
+    "link-root": "node tools/link-dependency-root.mjs",
     "test": "node --test test/parse.test.mjs test/route.test.mjs test/card.test.mjs test/host.test.mjs test/provider.test.mjs test/repair-session-events.test.mjs",
     "test:live": "node test/live-gateway.mjs",
     "repair-sessions": "node tools/repair-session-events.mjs scan",

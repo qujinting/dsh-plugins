@@ -322,13 +322,21 @@ So the card:
 ## Development
 
 ```powershell
-# This repository is plain ESM JS (no build step). The tests need DSH's module closure resolved,
-# so extract one from an installed DSH first:
-npm run link-runtime -- --asar "<DSH install dir>\resources\app.asar" --with-react
+# This repository is plain ESM JS (no build step). The tests need DSH's module closure resolved —
+# either of these:
+npm run link-root        # recommended: auto-discover the installed DSH closure and junction node_modules (no copies)
+npm run link-runtime -- --asar "<DSH install dir>\resources\app.asar" --with-react   # or: extract a real directory from app.asar
 
 npm test                      # unit tests (costs nothing)
 node test/live-gateway.mjs    # real gateway + real seam (spends one search)
 ```
+
+`link-root` finds DSH via the `$DSH_HARNESS_MODULES` / `$DSH_HARNESS_INSTALL` env vars or well-known
+install roots (`%LOCALAPPDATA%\Programs`, `Program Files`, `D:\apps`, ...), probes the closure layouts
+`resources/app/dsh/node_modules` and friends, requires every bare import of this plugin to exist as a
+**readable package.json** (a dangling link does not count), then creates the `node_modules` junction and
+verifies resolution on the spot. Re-run it after a DSH upgrade and the link follows the new install;
+`npm run link-root -- --json` gives a machine-readable summary.
 
 `link-runtime` follows the **real import graph** to extract `@deepseek-ai/*` and their transitive dependencies out of Electron's `app.asar` into `node_modules/` (the current closure is 22 packages / 877 files, with source and version recorded in `node_modules/.dsh-harness-runtime.json`). The reason not to install from npm: `@deepseek-ai/dsh-web` on the registry is still at `0.0.1-rc.1`, which does not match the kernel version. Re-run it after every DSH upgrade (add `--clean` to empty first). It **removes a directory junction on `node_modules` before creating a real directory**, so it cannot follow an old link and write into a shared profile directory — the earlier junction pointed at an uninstalled global dsh and an old monorepo checkout, which is exactly why `npm test` reported `ERR_MODULE_NOT_FOUND`.
 
