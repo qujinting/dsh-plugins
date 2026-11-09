@@ -1,0 +1,22 @@
+# dsh-secret-broker bundle layer.
+#
+# One row mounts both halves of the plugin on the host plane:
+#
+#   host half   — owns the encrypted store, registers the `ctx.shellEnv`
+#                 contributor that injects named secrets into model shell
+#                 executions, the `secret_list` tool, the routing prompt
+#                 section and its key list, the embedded skill, the
+#                 `/api/dsh-secret-broker` routes the settings page talks to,
+#                 and the result redaction listeners.
+#   client half — lib/client.js, loaded by dsh-client-modules from the
+#                 package's `dsh.client` declaration, mounts the key manager
+#                 page in Settings.
+#
+# The profile's own cordis.patch.yml is applied after this layer, so a
+# deployment can still override any of these values (for example to pin
+# `dataDir` or turn result redaction off).
+
+- insert:
+    - id: secret-broker
+      name: 'dsh-secret-broker'
+      config: {}

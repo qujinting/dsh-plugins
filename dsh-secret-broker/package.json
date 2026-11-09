@@ -1,0 +1,50 @@
+{
+  "name": "dsh-secret-broker",
+  "version": "0.1.0",
+  "description": "DSH 密钥代理插件：在桌面 GUI 里以「键 → 值」录入敏感数据（全局 / 会话两级），DPAPI 加密落盘；会话只拿到 key 名与环境变量名，shell 真正执行时才把值注入子进程，工具结果里出现的值会被就地脱敏。",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node test/parse.mjs",
+    "test": "node test/parse.mjs && node --test test/client.test.mjs test/store.test.mjs test/crypto.test.mjs test/shellenv.test.mjs test/redact.test.mjs test/route.test.mjs test/host.test.mjs"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "secrets",
+    "credentials",
+    "keyring",
+    "dpapi",
+    "environment-variables",
+    "plugin"
+  ],
+  "author": "qujinting",
+  "license": "MIT"
+}

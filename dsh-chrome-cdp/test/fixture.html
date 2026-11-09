@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>chrome-cdp fixture</title>
+<style>
+  :root { --gap: 16px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #fff; color: #111; }
+  html.dark body { background: #111; color: #eee; }
+  .app-main { height: 100vh; padding: 24px; display: flex; flex-direction: column; gap: var(--gap); overflow: auto; }
+  .toolbar { display: flex; gap: var(--gap); padding: 12px; border: 1px solid #ccc; }
+  .row { display: flex; gap: var(--gap); }
+  .col { flex: 1; border: 1px solid #ccc; padding: var(--gap); }
+  .card { border: 1px solid #ccc; padding: var(--gap); }
+  /* The deliberate bug under test: margin:auto on the cross axis kills align-items:stretch,
+     so this card collapses to its content width instead of filling the column. */
+  .card.broken { margin: auto; }
+  .tall { height: 1400px; }
+</style>
+</head>
+<body>
+  <div class="app-main">
+    <div class="toolbar"><span>toolbar</span></div>
+    <div class="row">
+      <div class="col" id="left">left column</div>
+      <div class="col" id="right">right column</div>
+    </div>
+    <div class="card broken" id="broken">card that should stretch but does not</div>
+    <div class="tall">spacer forcing a page scrollbar</div>
+  </div>
+</body>
+</html>

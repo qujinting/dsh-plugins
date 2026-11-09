@@ -1,0 +1,17 @@
+# Dependencies installed for local testing or by the plugin manager.
+node_modules/
+
+# Lockfiles are generated per package by pnpm during installation and are not
+# part of any plugin's source.
+pnpm-lock.yaml
+
+# Scratch output, logs, OS noise.
+*.log
+.DS_Store
+Thumbs.db
+
+# Runtime data the broker writes next to the package; never committed.
+dsh-secret-broker/data/
+
+# Extraction and acceptance artefacts kept out of the packages themselves.
+node_modules/.dsh-harness-runtime.json

@@ -1,0 +1,11 @@
+# The encrypted secret store lives here. It must never be committed, never
+# packed into a tarball, and never copied into a workspace that a session can
+# grep: `package.json#files` is a whitelist, so `data/` is excluded from the
+# published package too.
+data/
+
+node_modules/
+.scratch/
+.dev/
+.dsh/
+*.log

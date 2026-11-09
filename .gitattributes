@@ -1,0 +1,12 @@
+# Keep line endings stable across platforms: sources are authored with LF and
+# must stay LF in the repository, whatever the checkout does.
+* text=auto eol=lf
+
+# Binaries the plugins ship or document.
+*.png binary
+*.jpg binary
+*.ico binary
+*.mp4 binary
+*.zip binary
+*.moc3 binary
+*.wasm binary

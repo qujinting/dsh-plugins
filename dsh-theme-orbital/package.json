@@ -1,0 +1,56 @@
+{
+  "name": "dsh-theme-orbital",
+  "version": "0.2.0",
+  "description": "DSH 深潜主题（DeepSeek Blue）：单一品牌蓝、按明度分层的深空界面，含 4K 入场动画与会话壁纸。",
+  "icon": "./icon.svg",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "theme",
+    "docs",
+    "videos",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "icon.svg"
+  ],
+  "scripts": {
+    "test": "node test/manifest.mjs && node test/palette.mjs && node test/css.mjs && node test/inject.mjs && node test/routes.mjs && node test/client.mjs && node test/titlebar.mjs && node test/reveal.mjs",
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check theme/boot.js"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "theme",
+    "sci-fi",
+    "hud",
+    "boot-animation"
+  ],
+  "author": "qujinting",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  }
+}

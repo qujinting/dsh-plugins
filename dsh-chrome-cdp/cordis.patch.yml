@@ -1,0 +1,16 @@
+# dsh-chrome-cdp bundle layer.
+#
+# One effect: mount this package's plugin on the host plane. It contributes to
+# `ctx.tools` and `ctx.systemPrompt`, both of which are host rows in the base
+# bundle, and reaches the optional `ctx.skills` through a soft injection — so a
+# single top-level row is all it needs, and a profile that mounts no skill
+# registry still gets the tool.
+#
+# The profile's own cordis.patch.yml is applied after this layer, so a
+# deployment can still override any of these values (for example to pin
+# `browserPath` or turn the prompt section off).
+
+- insert:
+    - id: chrome-cdp
+      name: 'dsh-chrome-cdp'
+      config: {}

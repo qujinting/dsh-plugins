@@ -1,0 +1,24 @@
+# dsh-web-search-clinepass bundle layer.
+#
+# Two effects, both required for the replacement to take hold:
+#
+# 1. Point the host web seam's SEARCH capability at this provider. The base
+#    bundle pins `searchProvider: deepseek-official`, and provider selection is
+#    explicit-id-first, so registering another provider is not enough on its own.
+#    A patch replaces the whole `config` object, so `fetchProvider` is restated.
+#
+# 2. Mount this package's provider plugin. It registers into the host `ctx.web`
+#    service, so the row belongs to the host plane (not to an agent preset).
+#
+# The profile's own cordis.patch.yml is applied after this layer, so a deployment
+# can still override any of these values (for example to pin a different tool).
+
+- id: web
+  config:
+    searchProvider: clinepass
+    fetchProvider: http
+
+- insert:
+    - id: web-search-clinepass
+      name: 'dsh-web-search-clinepass'
+      config: {}

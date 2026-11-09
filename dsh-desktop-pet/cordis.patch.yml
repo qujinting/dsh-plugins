@@ -1,0 +1,19 @@
+# dsh-desktop-pet bundle layer.
+#
+# One row mounts both halves of the plugin:
+#
+#   host half   — discovers the shipped pet, serves its reference-closure
+#                 assets, proxies/caches the proprietary Cubism Core runtime,
+#                 serves the MIT vendor bundle, and mirrors DSH session
+#                 activity as a phase stream.
+#   client half — lib/client.js, loaded by dsh-client-modules from the
+#                 package's `dsh.client` declaration, mounts the floating
+#                 Live2D surface in the Web GUI.
+#
+# The profile's own cordis.patch.yml is applied after this layer, so a
+# deployment can still override any of these values.
+
+- insert:
+    - id: desktop-pet
+      name: 'dsh-desktop-pet'
+      config: {}

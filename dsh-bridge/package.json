@@ -1,0 +1,46 @@
+{
+	"name": "dsh-bridge",
+	"version": "0.1.0",
+	"description": "DSH 能力网关：把 Harness Host 侧的插件能力收敛成一个带确认、超时、熔断与审计的统一入口，供其他插件调用，而不必各自耦合内部服务名与方法签名。",
+	"type": "module",
+	"main": "src/index.js",
+	"icon": "./icon.svg",
+	"exports": {
+		".": {
+			"default": "./src/index.js"
+		},
+		"./cordis.patch.yml": "./cordis.patch.yml",
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"src/**/*.js",
+		"cordis.patch.yml",
+		"README.md",
+		"LICENSE",
+		"icon.svg"
+	],
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"check": "node --check src/index.js && node --check src/capabilities.js && node --check src/policy.js && node --check src/serialize.js",
+		"test": "node --test test/bridge.test.mjs test/policy.test.mjs test/config.test.mjs"
+	},
+	"keywords": [
+		"dsh-plugin",
+		"dsh",
+		"deepseek-harness",
+		"cordis",
+		"bridge",
+		"gateway",
+		"capability",
+		"plugin"
+	],
+	"author": "qujinting",
+	"license": "MIT"
+}

@@ -1,0 +1,23 @@
+# dsh-bridge 的能力行。用户级覆盖写在 profile 的 cordis.patch.yml，不要改本文件。
+#
+# `confirm` 里的能力必须由调用方显式传 `{ confirm: true }`，否则只返回
+# confirmation-required，不做任何动作。`serviceDeny` 是硬黑名单，命中即拒。
+#
+# configEditor 被挡在 service.call 之外是有意的：绕过确认关卡直接写用户的
+# profile patch，是这个插件最不该开的门。
+- insert:
+    - id: dsh-bridge
+      name: 'dsh-bridge'
+      config:
+        timeoutMs: 15000
+        auditLimit: 200
+        confirm:
+          - config.edit
+          - plugin.restart
+          - app.exit
+        serviceDeny:
+          - credentials
+          - configEditor
+          - dshBridge
+        breakerThreshold: 5
+        breakerCooldownMs: 30000

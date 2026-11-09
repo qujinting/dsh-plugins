@@ -1,0 +1,51 @@
+{
+  "name": "dsh-chrome-cdp",
+  "version": "0.1.0",
+  "description": "DSH plugin: registers a native `chrome_cdp` tool, an embedded `chrome-cdp` skill, and a routing prompt section, so every session can open, measure, and screenshot a real page with the machine's own Chrome over CDP — no Playwright, no Puppeteer, no asking the user for screenshots.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs",
+    "check": "node --check src/index.js && node --check src/cdp.js && node --check src/tool.js && node --check src/skill.js && node --check src/prompt.js"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "chrome",
+    "cdp",
+    "devtools-protocol",
+    "screenshot",
+    "visual-regression",
+    "coding-agent",
+    "plugin"
+  ],
+  "author": "qujinting",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qujinting/dsh-chrome-cdp.git"
+  },
+  "homepage": "https://github.com/qujinting/dsh-chrome-cdp#readme",
+  "bugs": {
+    "url": "https://github.com/qujinting/dsh-chrome-cdp/issues"
+  }
+}

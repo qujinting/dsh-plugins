@@ -1,0 +1,58 @@
+{
+  "name": "dsh-desktop-pet",
+  "version": "1.0.0",
+  "description": "DSH 桌宠插件：把 Live2D 虚拟形象挂进 DSH Web GUI —— 可拖动、跟随鼠标、点击有反应、跟着会话状态换动作与表情。",
+  "icon": "./icon.png",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "src",
+    "assets",
+    "docs",
+    "test",
+    "cordis.patch.yml",
+    "README.md",
+    "NOTICE.md",
+    "LICENSE",
+    "icon.png"
+  ],
+  "scripts": {
+    "build:vendor": "esbuild src/vendor-entry.js --bundle --format=iife --outfile=lib/live2d-vendor.js --minify --target=es2020",
+    "check": "node test/parse.mjs",
+    "test": "node test/parse.mjs && node test/host-smoke.mjs && node test/activity.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "live2d",
+    "desktop-pet",
+    "桌宠"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "pixi.js": "8.19.0",
+    "untitled-pixi-live2d-engine": "1.4.0"
+  }
+}

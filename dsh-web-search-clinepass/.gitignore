@@ -1,0 +1,19 @@
+# The package resolves the DSH runtime closure through a junction here (see
+# install.mjs); the shared harness module tree is never part of this project.
+node_modules/
+
+# Local installer backups of a profile manifest.
+*.bak-*
+
+# Scratch space for one-off probes.
+_probe/
+
+# Scratch directory the runtime linker uses for the optional react install.
+.card-test-modules/
+
+# OS / editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

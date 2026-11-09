@@ -1,0 +1,74 @@
+# dsh-theme-orbital bundle layer.
+#
+# One row mounts both halves of the plugin:
+#
+#   host half   — contributes index-injection rows (design tokens, the veil
+#                 markup and its reveal controller) through
+#                 `webserver/index-inject`, and serves the live theme files
+#                 under /api/dsh-theme so a page refresh picks up edits.
+#   client half — lib/client.js, loaded by dsh-client-modules from this
+#                 package's `dsh.client` declaration. It keeps the injected
+#                 stylesheet fresh, owns the enable/disable toggle and exposes
+#                 the replay/diagnostics handle.
+#
+# The profile's own cordis.patch.yml is applied after this layer, so a
+# deployment can override any value below.
+
+- insert:
+    - id: theme-orbital
+      name: 'dsh-theme-orbital'
+      config:
+        # Master switch. When false the host injects nothing at all.
+        enabled: true
+        # Entrance animation: hud (sci-fi self-test), fade (plain crossfade),
+        # or none (theme only).
+        animation: hud
+        # Optional 4K intro film, resolved from the package root. When it plays,
+        # the CSS HUD animation only covers the loading interval before the
+        # first video frame. Empty string disables the video.
+        introVideo: 'videos/进场60帧4K.mp4'
+        # Optional looping wallpaper for the conversation column. Blurred and
+        # dimmed so it never competes with text; empty disables it.
+        backgroundVideo: 'videos/循环播放背景.mp4'
+        # always: keep it behind ongoing conversations too (the single dark
+        # design keeps it visible in every session). empty: only on a session
+        # with no turns yet.
+        backgroundScope: always
+        # Empty/welcome session: sharp and bright.
+        backgroundOpacity: 0.85
+        backgroundBlur: 6
+        # Conversation with turns: still visible behind the text, a little
+        # softer than the welcome screen.
+        backgroundOpacityConversation: 0.55
+        backgroundBlurConversation: 8
+        # always: play on every page load. cold: once per renderer session
+        # (≈ once per desktop app launch; a reload inside the same window
+        # does not replay). The film is 7s long, so cold is the sane default —
+        # the sidebar ▷ button replays it on demand.
+        playOn: cold
+        # Minimum veil time in milliseconds before the reveal can start.
+        durationMs: 1500
+        # Hold the film's last frame this long before the slow fade-out starts.
+        # Applies when introTailMs is 0 (wait for the real end) and to the
+        # film-less HUD veil; the cross-fade path reveals immediately.
+        holdMs: 350
+        # The shipped films end on ~1.5s of nearly still frames. Start the
+        # cross-fade this many ms before the film's end, instead of freezing on
+        # the last frame and only then fading. 0 = play the film to its very end
+        # and use holdMs (the old behaviour); clamp 0–5000.
+        introTailMs: 1500
+        # Windows native title bar (minimize / maximize / close) during the veil:
+        # hide  = the overlay plate turns transparent and the glyphs take the
+        #         film's own backdrop colour, so the controls read as absent;
+        # blend = transparent plate, glyphs recoloured for contrast (visible);
+        # off   = leave the shell's measured title-bar colours untouched.
+        # No effect outside the Windows desktop app.
+        titleBar: hide
+        # Ambient layers: the CRT scan-line texture is off by default (it read as
+        # a field of horizontal lines over the conversation); the centre-column
+        # deep glow stays on. Both can be toggled.
+        scanlines: false
+        grid: true
+        # Accent intensity: off | low | medium | high. Also scales the composer
+        # light band and its coloured spill; off returns the plain dark card.
+        glow: medium

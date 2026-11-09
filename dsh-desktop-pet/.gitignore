@@ -1,0 +1,9 @@
+node_modules/
+.dev/
+_dsh_src/
+_assets_extract/
+*.log
+
+# Local distribution archive of the model; not part of the package (see
+# package.json#files) and reproducible from assets/.
+DS*.zip

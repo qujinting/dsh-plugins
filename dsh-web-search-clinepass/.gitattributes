@@ -1,0 +1,8 @@
+# The harness itself ships LF sources; keep this checkout platform-stable.
+* text=auto eol=lf
+
+# Binary assets stay untouched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.zstd binary
