@@ -102,7 +102,7 @@ Open that PNG with the read_image tool and judge it by eye before reporting a re
 例：钉死浏览器并关掉 prompt 段
 
 ```yaml
-- id: chrome-cdp
+- id: dsh-chrome-cdp
   config:
     browserPath: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
     registerPromptSection: false

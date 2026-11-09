@@ -31,7 +31,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /** Cordis plugin name used by loader diagnostics. */
-export const name = 'desktop-pet'
+export const name = 'dsh-desktop-pet'
 
 /**
  * The one host service this plugin contributes to. `webServer` is required

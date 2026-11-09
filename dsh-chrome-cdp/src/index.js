@@ -35,7 +35,7 @@ import { CHROME_CDP_SKILL } from './skill.js'
 import { chromeCdpTool } from './tool.js'
 
 /** Cordis plugin name used by loader diagnostics. */
-export const name = 'chrome-cdp'
+export const name = 'dsh-chrome-cdp'
 
 /**
  * The host-plane services this plugin contributes to. `skills` is deliberately

@@ -11,6 +11,6 @@
 # `browserPath` or turn the prompt section off).
 
 - insert:
-    - id: chrome-cdp
+    - id: dsh-chrome-cdp
       name: 'dsh-chrome-cdp'
       config: {}

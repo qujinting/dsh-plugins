@@ -42,7 +42,7 @@ import { SecretStore } from './store.js'
 import { secretListTool } from './tool.js'
 
 /** Cordis plugin name used by loader diagnostics. */
-export const name = 'secret-broker'
+export const name = 'dsh-secret-broker'
 
 /**
  * The two services whose absence would make the plugin pointless: without

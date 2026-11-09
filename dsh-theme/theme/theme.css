@@ -1,0 +1,977 @@
+/* =============================================================================
+ * dsh-theme — DeepSeek Blue（深潜）主题样式
+ *
+ * 这里只放「结构 / 质感 / 动效」；颜色一律来自 theme/palette.json：
+ *   宿主在 index 里先注入 `body{--dsw-alias-*: … !important}`（压过 ui-layout
+ *   写在 body 内联样式上的同名词）和 `--dsw-specific-*` 表面色，再注入本文件。
+ *   所以本文件不出现裸色值，只有 var() 引用；唯二的例外是遮罩自身必须能独立
+ *   渲染的深空底与细线掩码（deep-space backdrop / mask stops）。
+ *
+ * 设计语言：单一品牌蓝（palette 里的 brand），靠明度分层（BASE/PANEL/SURFACE/GLASS），
+ * 所有细线统一为品牌色低透明度；氛围层是深空径向蓝光 + 全宽 1px 细线。
+ *
+ * 选择器约定：
+ *   - 优先用设计系统暴露的稳定钩子：`data-composer-*` / `data-conversation-*` /
+ *     `data-chat-*` / `data-shell-*` / `data-dsh-boot` / `--dsw-*` 令牌。
+ *   - 组件规则统一带 `html ` 前缀把特异性抬到 (0,1,1) 以上：宿主注入的 <style>
+ *     在 index 里排在应用自己的 <link> 之前，同特异性下会输给后加载的应用 CSS。
+ *   - AppFrame 的三列没有稳定属性，只能按结构定位；这一小段集中写在 §2，
+ *     DSH 升级后若列结构变化，只需要改这一处。
+ *   - 不改 grid-template-columns、列宽、折叠逻辑：拖拽手柄按列宽绝对值定位，
+ *     改几何会让手柄错位。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------- §1 变量 */
+:root {
+
+	--orbital-scanline-opacity: 0.035;
+	--orbital-grid-opacity: 0.85;
+	--orbital-glow: 1;
+	--orbital-veil-duration: 1500ms;
+	--orbital-ease: cubic-bezier(0.22, 0.68, 0.16, 1);
+	--orbital-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ------------------------------------------------------- §2 框架与氛围层 */
+/* AppFrame：三列外壳（含 shell.overlay 的那个 div）。isolation 让负 z-index 的
+   氛围层与壁纸只在本帧内生效。 */
+#root div:has(> [data-shell-overlay]) {
+	position: relative;
+	isolation: isolate;
+}
+
+#root div:has(> [data-shell-overlay]) > div:nth-of-type(1) {
+	position: relative;
+	box-shadow: inset -1px 0 0 color-mix(in srgb, var(--dsw-alias-border-l3) 65%, transparent);
+	background-image: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--orbital-accent) calc(7% * var(--orbital-glow)), transparent),
+		transparent 34%,
+		/* 底部只压一档。原来是 60%，那一档直接叠在「工作区」列表最后几条上，
+		   会话名整片沉进底色里，读起来像被禁用——侧栏下半部分的文字发暗就是它。 */
+		color-mix(in srgb, var(--dsw-alias-bg-base) 22%, transparent)
+	);
+}
+
+#root div:has(> [data-shell-overlay]) > div:nth-of-type(2) {
+	position: relative;
+	isolation: isolate;
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orbital-accent) calc(10% * var(--orbital-glow)), transparent);
+}
+
+#root div:has(> [data-shell-overlay]) > div:nth-of-type(2)::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: radial-gradient(
+		1200px 520px at 62% -10%,
+		color-mix(in srgb, var(--orbital-accent) calc(16% * var(--orbital-glow)), transparent),
+		transparent 72%
+	);
+	opacity: var(--orbital-grid-opacity);
+	-webkit-mask-image: linear-gradient(180deg, #000 0%, #000 62%, transparent 100%);
+	mask-image: linear-gradient(180deg, #000 0%, #000 62%, transparent 100%);
+}
+
+/* 这一层铺在内容之上，只能做「顶部一点点沉降」，不能做暗角。
+   原来是 130% × 88% 从顶部中心铺开的径向暗角：渐变带在 70%→100% 之间走到最暗，
+   88% 之后整段平铺 45% 的深色。于是整页从上往下越来越暗，页面最底边（输入区、
+   token 统计）和左边缘（工作区列表底部的会话名）最黑——文字看着发灰、灯带看着
+   发闷，全是这层 45% 的深色半透明盖出来的。这不是亮度不够，是上面盖了一层膜，
+   所以调灯带的数值永远看不出变化。
+   现在只保留最顶部 18% 的一条极轻沉降，底部和左右两侧完全放行；最外圈是
+   transparent，不会再有一块平铺的暗色。 */
+html [data-shell-overlay] {
+	--orbital-vignette: var(--dsw-alias-bg-base);
+	background-image: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--orbital-vignette) 30%, transparent) 0%,
+		transparent 18%
+	);
+	background-repeat: no-repeat;
+}
+
+#root div:has(> [data-shell-overlay]) > div:nth-of-type(3) {
+	border-left: 1px solid color-mix(in srgb, var(--orbital-accent) 18%, transparent);
+}
+
+#root div:has(> [data-shell-overlay]) > div:nth-child(4) {
+	border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l3) 70%, transparent);
+}
+
+/* 扫描线：深潜设计固定为深色，所以不跟随 DSH 的明暗偏好 */
+html body::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	pointer-events: none;
+	background-image: repeating-linear-gradient(
+		0deg,
+		color-mix(in srgb, var(--orbital-accent) 55%, transparent) 0 1px,
+		transparent 1px 3px
+	);
+	opacity: var(--orbital-scanline-opacity);
+	mix-blend-mode: screen;
+}
+
+/* ---------------------------------------------------------------- §3 侧栏 */
+html #root div:has(> [data-shell-overlay]) > div:nth-of-type(1) [data-window-drag] {
+	border-bottom: 1px solid color-mix(in srgb, var(--orbital-accent) 22%, transparent);
+}
+
+/* 选中的会话：原型是「品牌色 16% 底 + 3px 亮条」。条用 inset 阴影画，
+   不占布局宽度；圆角跟着会话行自己的 --dsw-radius-md。 */
+html #root div:has(> [data-shell-overlay]) > div:nth-of-type(1) [aria-selected='true'] {
+	box-shadow: inset 3px 0 0 color-mix(in srgb, var(--orbital-accent) calc(92% * var(--orbital-glow)), transparent);
+	background: color-mix(in srgb, var(--orbital-accent) calc(16% * var(--orbital-glow)), transparent);
+	border-radius: var(--dsw-radius-md);
+}
+
+/* 新会话：原型是整宽、品牌色描边的浅蓝按钮。按钮没有 data 钩子，
+   类名是 <hash>_newSession；只取 button 本体（子元素是 span/svg）。
+   #root 提高特异性，压过组件自己的 .newSession:hover 与折叠态规则。 */
+html #root button[class*='_newSession'] {
+	border: 1px solid color-mix(in srgb, var(--orbital-accent) 30%, transparent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--orbital-accent) 9%, transparent);
+	color: var(--dsw-alias-label-primary);
+}
+
+html #root button[class*='_newSession']:hover {
+	border-color: color-mix(in srgb, var(--orbital-accent) 46%, transparent);
+	background: color-mix(in srgb, var(--orbital-accent) 16%, transparent);
+}
+
+/* ------------------------------------------------------------ §4 输入区 */
+html [data-composer-seat] {
+	/* 14 → 18：多出的 4px 是给灯带那圈 26px 色晕的退让，让光和下面的统计行各自
+	   有落点，灯带也不会看起来贴在下沿上。 */
+	padding-bottom: 18px;
+}
+
+/* 输入区彩色灯带：卡片外沿一圈缓慢流动的彩色灯带，灯带的光再向外溢成彩色投影。
+   两层实现，都不动盒模型、不加 DOM：
+     · ::before 负责「灯带」——conic 渐变铺满卡片外扩的一圈，再用 mask 掏掉中间，
+       只留下贴边的那条线；drop-shadow 把线自身的光散开。
+     · 卡片自己的 box-shadow 负责「投影」——壁纸上的彩色溢光，外加一条内侧回光，
+       让灯带在卡片内部靠边处也有落点（参考稿里边框内侧是亮的）。
+   颜色一律取自 palette.metrics 的 --orbital-band-*；强度全部乘 --orbital-glow，
+   于是 glow=off 时灯带 / 投影 / 回光一起消失，退回纯深色卡片。
+
+   这里的「光预算」怎么花，由两个约束决定：
+     1. 卡片正下方 18px 就是 token 统计行（[data-session-stats-usage]）。所以投影
+        一律不带大的正 Y 偏移、模糊半径封顶 ~56px：光只贴着卡片边界散开，不再向下
+        糊成一片雾把统计压掉（之前那两层 0 24px/0 56px 的紫蓝投影下探到 180px+）。
+     2. 灯带不靠堆辉光变亮，靠「峰谷差」变亮：线保持 1.5px，三层 drop-shadow
+        （1px 白芯 / 5px 青霓虹 / 13px 蓝晕）只负责定住形状，真正的亮度交给
+        conic 里两处 8° 的过白亮头，在 45% 的底色上巡游。近距辉光叠多了，1.5px
+        的线会被撑成 5~6px 的白边——那是粗，不是亮。
+     3. 统计行本身还有一层保险，见 §5 的 [data-session-stats-usage]：抬 z-index
+        把它压到所有溢光前面。光再小，只要叠在字上就是一层灰。 */
+@property --orbital-band-angle {
+	syntax: '<angle>';
+	inherits: false;
+	initial-value: 0deg;
+}
+
+html [data-composer-card] {
+	border: 1px solid color-mix(in srgb, var(--orbital-accent) 24%, var(--dsw-alias-border-l3));
+	border-radius: var(--dsw-radius-panel);
+
+	/* 纯色，不要半透明：壁纸在背后时，半透明卡片会跟着背景一起变暗，
+	   聚焦时 DSH 又把输入区刷成 --dsw-specific-input-major，
+	   于是「暗淡 → 聚焦变亮」地闪一下。纯色卡片不会有这个跳变。 */
+	background: var(--dsw-specific-input-major);
+	position: relative;
+
+	/* 输入区里的说明文字（占位符、命令提示）取的是 label-caption，这一档在深潜里
+	   压得偏暗，落在深灰卡片上几乎读不出来；只在卡片作用域内把它提到
+	   label-secondary 与 label-primary 之间，全局 caption 不动。 */
+	--dsw-alias-label-caption: color-mix(in srgb, var(--dsw-alias-label-secondary) 76%, var(--dsw-alias-label-primary));
+
+	box-shadow:
+		/* 落地影：只留最轻的两档，把「浮在壁纸上」交代清楚，不变成一团大雾。 */
+		var(--dsw-shadow-lv1),
+		var(--dsw-shadow-lv1-blur),
+
+		/* 占位层：聚焦时这一格换成品牌色描边环。两态阴影列表必须层数、内外一致
+		   （含这一层和末尾两层的 inset），否则 Chrome 判定不可插值，过渡会直接跳变。 */
+		0 0 0 0 transparent,
+
+		/* 贴边光晕：零 Y 偏移的短半径，光沿卡片四边散开约一个卡片圆角的距离就收住。 */
+		0 0 44px -14px color-mix(in srgb, var(--orbital-band-azure) calc(40% * var(--orbital-glow)), transparent),
+		-20px 0 40px -18px color-mix(in srgb, var(--orbital-band-cyan) calc(34% * var(--orbital-glow)), transparent),
+		20px 0 40px -18px color-mix(in srgb, var(--orbital-band-violet) calc(34% * var(--orbital-glow)), transparent),
+
+		/* 上方略强、下方极短：光往上走（那边是空的会话区），向下只够交代边界，
+		   绝不落到统计行上。 */
+		0 -16px 48px -22px color-mix(in srgb, var(--orbital-band-cyan) calc(42% * var(--orbital-glow)), transparent),
+		0 10px 24px -18px color-mix(in srgb, var(--orbital-band-azure) calc(30% * var(--orbital-glow)), transparent),
+
+		/* 内回光：给边缝补一点点亮就够。这两层是「线变粗」的第二个来源——内环一重，
+		   视觉上就和外圈那道光并成一条 3px 的白边，所以压到几乎只剩一层薄膜。 */
+		inset 0 0 0 1px color-mix(in srgb, var(--orbital-band-pale) calc(14% * var(--orbital-glow)), transparent),
+		inset 0 0 34px -18px color-mix(in srgb, var(--orbital-band-cyan) calc(38% * var(--orbital-glow)), transparent);
+
+	/* 聚焦时那层光要比入场慢一点收放，否则像开关一样硬切。
+	   缓动走本主题自己的 --orbital-ease*：DSH 的 --ds-ease-* 是运行时令牌，
+	   宿主没注入时整条 transition 会失效（等于没有过渡）。 */
+	transition:
+		border-color 220ms var(--orbital-ease),
+		box-shadow 380ms var(--orbital-ease-out);
+}
+
+/* 环靠「mask 掏空中间」画出来；万一运行时不支持 mask 合成，整条规则就别生效，
+   否则那个渐变矩形会糊在输入区上面。 */
+@supports ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+	html [data-composer-card]::before {
+		content: '';
+		position: absolute;
+
+		/* 绝对定位的参照系是卡片的 padding box，卡片还有 1px 自己的描边，
+		   所以往外退「灯带宽 + 1px」才让灯带整条落在卡片边框外面。 */
+		inset: calc((var(--orbital-band-width) + 1px) * -1);
+		padding: var(--orbital-band-width);
+		border-radius: calc(var(--dsw-radius-panel) + 1px + var(--orbital-band-width));
+		/* 「一条光在跑」得先有一条暗轨道：底色压到 22~28%，在深底上只剩一圈很淡的
+		   蓝线（够看出卡片轮廓，但绝不抢注意力），然后两处 4° 的白亮头挂一条短拖尾。
+		   之前谷底留在 45%，整圈都是亮的，亮头根本没有存在感——三个相位的截图几乎
+		   一模一样，等于没动。对比必须压在峰谷差上，不能压在整体亮度上。
+		   宽度也别动：2px 以上就从「光」退化成「描边」，也会离输入区更远。 */
+		background: conic-gradient(
+			from var(--orbital-band-angle, 0deg) at 50% 280%,
+			color-mix(in srgb, var(--orbital-band-azure) 24%, transparent) 0deg,
+			color-mix(in srgb, var(--orbital-band-azure) 26%, transparent) 20deg,
+			color-mix(in srgb, var(--orbital-band-cyan) 46%, transparent) 31deg,
+			var(--orbital-band-pale) 36deg,
+			var(--orbital-band-pale) 40deg,
+			color-mix(in srgb, var(--orbital-band-cyan) 74%, transparent) 44deg,
+			color-mix(in srgb, var(--orbital-band-azure) 48%, transparent) 54deg,
+			color-mix(in srgb, var(--orbital-band-azure) 28%, transparent) 72deg,
+			color-mix(in srgb, var(--orbital-band-violet) 22%, transparent) 112deg,
+			color-mix(in srgb, var(--orbital-band-azure) 24%, transparent) 160deg,
+			color-mix(in srgb, var(--orbital-band-violet) 20%, transparent) 208deg,
+			color-mix(in srgb, var(--orbital-band-azure) 24%, transparent) 246deg,
+			color-mix(in srgb, var(--orbital-band-cyan) 46%, transparent) 259deg,
+			var(--orbital-band-pale) 264deg,
+			var(--orbital-band-pale) 268deg,
+			color-mix(in srgb, var(--orbital-band-cyan) 74%, transparent) 272deg,
+			color-mix(in srgb, var(--orbital-band-azure) 48%, transparent) 282deg,
+			color-mix(in srgb, var(--orbital-band-azure) 28%, transparent) 300deg,
+			color-mix(in srgb, var(--orbital-band-violet) 22%, transparent) 340deg,
+			color-mix(in srgb, var(--orbital-band-azure) 24%, transparent) 360deg
+		);
+		opacity: var(--orbital-glow);
+
+		/* 加算混合：线压在不透明深色卡片上时按通道相加，边缘会自己「过曝」出一点
+		   白芯，比单纯提高不透明度更像真正的光。不支持 plus-lighter 的运行时
+		   会忽略这条声明，退回 normal 叠色，观感只是稍平，不会坏。 */
+		mix-blend-mode: plus-lighter;
+
+		/* 三层就够。之前叠到六层是为了「加量」，但 drop-shadow 是串联的，近距那几层
+		   会把 1.5px 的线撑成 5~6px 的白边——看着是粗，不是亮。现在近距只留一层很淡
+		   的白芯定住线形，中距一层青霓虹，远距一层蓝晕，线才细得下来。
+		   13px 是唯一明显外溢的部分，再大就会压到下面的统计行。 */
+		filter:
+			drop-shadow(0 0 1px color-mix(in srgb, var(--orbital-band-pale) 55%, transparent))
+			drop-shadow(0 0 5px color-mix(in srgb, var(--orbital-band-cyan) 70%, transparent))
+			drop-shadow(0 0 13px color-mix(in srgb, var(--orbital-band-azure) 45%, transparent));
+		-webkit-mask:
+			linear-gradient(#000 0 0) content-box,
+			linear-gradient(#000 0 0);
+		-webkit-mask-composite: xor;
+		mask:
+			linear-gradient(#000 0 0) content-box,
+			linear-gradient(#000 0 0);
+		mask-composite: exclude;
+		pointer-events: none;
+		/* 8s 一圈、两道光头 → 大约每 4 秒有一道光从边上过去。24s 太慢，一整圈下来
+		   人根本意识不到它在动；再快就成了跑马灯，抢输入区里正在打的字。 */
+		animation: orbital-band-drift 8s linear infinite;
+
+		/* 灯带自身也要跟着聚焦一起变亮，而且这段过渡和卡片的阴影同一条曲线。 */
+		transition:
+			opacity 380ms var(--orbital-ease-out),
+			filter 380ms var(--orbital-ease-out);
+	}
+}
+
+html [data-composer-card]:focus-within::before {
+	/* 不透明度已经到顶，聚焦的增量放在「光晕推远一档 + 亮芯更实」上：
+	   线本身更白、霓虹更紧、色晕更远，于是聚焦读起来是「灯更亮」，不是「灯变大」。 */
+	/* 层数、函数名必须和默认态完全一致，否则 filter 不可插值，聚焦会硬跳。 */
+	filter:
+		drop-shadow(0 0 1px color-mix(in srgb, var(--orbital-band-pale) 72%, transparent))
+		drop-shadow(0 0 6px color-mix(in srgb, var(--orbital-band-cyan) 82%, transparent))
+		drop-shadow(0 0 16px color-mix(in srgb, var(--orbital-band-azure) 48%, transparent));
+}
+
+/* 聚焦只比默认「亮一档」，不是亮两档。
+   输入框几乎一直是聚焦的——光晕要做的是给一点反馈，不是一直在往外烧。
+   所以半径只比默认多 6~8px、透明度多 6~8 个点，描边环也从 2px/55% 收到
+   1.5px/42%，border 从 90% 降到 68%：聚焦读起来是「边界变清晰了」，
+   而不是「整块开始发光」。 */
+html [data-composer-card]:focus-within {
+	border-color: color-mix(in srgb, var(--orbital-accent) 68%, var(--dsw-alias-border-l3));
+	box-shadow:
+		var(--dsw-shadow-lv1),
+		var(--dsw-shadow-lv1-blur),
+		0 0 0 1.5px color-mix(in srgb, var(--orbital-accent) calc(42% * var(--orbital-glow)), transparent),
+		0 0 50px -16px color-mix(in srgb, var(--orbital-band-azure) calc(40% * var(--orbital-glow)), transparent),
+		-20px 0 44px -20px color-mix(in srgb, var(--orbital-band-cyan) calc(36% * var(--orbital-glow)), transparent),
+		20px 0 44px -20px color-mix(in srgb, var(--orbital-band-violet) calc(36% * var(--orbital-glow)), transparent),
+		0 -18px 54px -22px color-mix(in srgb, var(--orbital-band-cyan) calc(46% * var(--orbital-glow)), transparent),
+		0 10px 26px -18px color-mix(in srgb, var(--orbital-band-azure) calc(32% * var(--orbital-glow)), transparent),
+		inset 0 0 0 1px color-mix(in srgb, var(--orbital-band-pale) calc(20% * var(--orbital-glow)), transparent),
+		inset 0 0 38px -18px color-mix(in srgb, var(--orbital-band-cyan) calc(42% * var(--orbital-glow)), transparent);
+}
+
+html [data-composer-chip],
+html [data-composer-command] {
+	border-radius: var(--dsw-radius-sm);
+	background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 78%, transparent);
+	border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 90%, transparent);
+}
+
+html [data-composer-chip-selected] {
+	border-color: color-mix(in srgb, var(--orbital-accent) 55%, transparent);
+	background: color-mix(in srgb, var(--orbital-accent) calc(14% * var(--orbital-glow)), transparent);
+}
+
+/* 排队消息 Dock：默认和输入区几乎同色，展开/收起按钮很容易看不见。
+   面板给品牌蓝薄底 + 1px 描边，标题行再压深一档，图标与计数走品牌色。
+   用 #root 抬特异性，压过队列组件自己的 .panel:after / .header 规则。 */
+html #root [data-queue-dock] {
+	--dsw-specific-menu: color-mix(in srgb, var(--orbital-accent) 10%, var(--dsw-alias-bg-layer-2));
+}
+
+html #root [data-queue-dock] > div::after {
+	border-width: 1px;
+	border-color: color-mix(in srgb, var(--orbital-accent) 32%, transparent);
+	border-bottom: none;
+}
+
+html #root [data-queue-dock] > div > button[aria-controls] {
+	background: color-mix(in srgb, var(--orbital-accent) 12%, transparent);
+	color: var(--dsw-alias-label-primary);
+}
+
+html #root [data-queue-dock] > div > button[aria-controls]:hover {
+	background: color-mix(in srgb, var(--orbital-accent) 18%, transparent);
+}
+
+html #root [data-queue-dock] > div > button[aria-controls] > span:first-child {
+	color: color-mix(in srgb, var(--orbital-accent) 75%, var(--dsw-alias-label-tertiary));
+}
+
+html #root [data-queue-dock] > div > button[aria-controls] > span:nth-child(2) {
+	color: color-mix(in srgb, var(--orbital-accent) 25%, var(--dsw-alias-label-primary));
+}
+
+/* 会话区 tab 栏本身没有底色，别在这里加一层（会变成一条单独色带） */
+html [role='tab'][aria-selected='true'] {
+	color: var(--dsw-alias-label-primary);
+}
+
+/* 用户 / 引导消息气泡：主题色描边。类名是构建哈希（<hash>_bubble），
+   用属性包含选择器只认语义后缀，并限定在会话滚动区内。用 inset 环而不是
+   border，别让 1px 改变气泡尺寸或换行。 */
+html [data-conversation-scroll] [class*='_bubble'] {
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orbital-accent) 40%, transparent);
+}
+
+html [data-conversation-header-leading],
+html [data-conversation-header-corner] {
+	-webkit-backdrop-filter: blur(10px);
+	backdrop-filter: blur(10px);
+}
+
+html [data-turn-trigger] {
+	border-left: 2px solid color-mix(in srgb, var(--orbital-accent) calc(50% * var(--orbital-glow)), transparent);
+}
+
+html [data-code-block-banner] {
+	background-image: linear-gradient(
+		90deg,
+		color-mix(in srgb, var(--orbital-accent) calc(16% * var(--orbital-glow)), transparent),
+		transparent 62%
+	);
+	border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent);
+}
+
+/* token 统计紧贴输入区下沿。它发灰有两层原因，得分开治：
+   1. 层叠 —— 卡片是 z-index:auto 的定位元素，它的 box-shadow / 灯带光晕会按
+      DOM 顺序画在统计行之上。光一压，11px 的数字就「陷进去」了。这里 +2 把这
+      一行钉在输入区所有溢光前面；只把光调小治不了这个，光小也一样蒙。
+   2. 对比 —— 就算不被盖，11px 的 tertiary 灰字落在蓝紫雾上也不够。给一条同底色
+      的短描边，字的边界就立住了。 */
+html [data-session-stats-usage] {
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.01em;
+	position: relative;
+	z-index: 2;
+	text-shadow: 0 1px 2px color-mix(in srgb, var(--dsw-alias-bg-base) 80%, transparent);
+}
+
+/* ------------------------------------------------------- §6 浮层与菜单 */
+html [role='menu'],
+html [role='dialog'],
+html [role='listbox'] {
+	box-shadow:
+		var(--dsw-shadow-lv3),
+		0 0 0 1px color-mix(in srgb, var(--orbital-accent) calc(9% * var(--orbital-glow)), transparent);
+}
+
+/* ---------------------------------------------------------- §7 滚动条 */
+html ::-webkit-scrollbar-thumb {
+	background-clip: padding-box;
+	border-radius: 999px;
+}
+
+html ::-webkit-scrollbar-thumb:hover {
+	box-shadow: 0 0 8px color-mix(in srgb, var(--orbital-accent) calc(45% * var(--orbital-glow)), transparent);
+}
+
+/* ------------------------------------------------- §8 内置启动屏（boot） */
+html [data-dsh-boot] {
+	background:
+		radial-gradient(
+			900px 380px at 50% 34%,
+			color-mix(in srgb, var(--orbital-accent) calc(9% * var(--orbital-glow)), transparent),
+			transparent 70%
+		),
+		var(--dsw-alias-bg-base, Canvas);
+}
+
+html [data-dsh-boot] > div {
+	gap: 18px;
+}
+
+html [data-dsh-boot] > div > div:first-child {
+	font-family: var(--orbital-mono);
+	font-size: 13px;
+	font-weight: 500;
+	letter-spacing: 0.42em;
+	text-indent: 0.42em;
+	color: color-mix(in srgb, var(--orbital-accent) 78%, var(--dsw-alias-label-primary));
+	text-shadow: 0 0 14px color-mix(in srgb, var(--orbital-accent) calc(45% * var(--orbital-glow)), transparent);
+}
+
+html [data-dsh-boot-spinner] {
+	width: 34px;
+	height: 34px;
+}
+
+html [data-dsh-boot] > div > div:last-child {
+	font-family: var(--orbital-mono);
+	font-size: 11px;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+}
+
+/* ------------------------------------------------------ §9 入场遮罩 veil */
+#dsh-theme-veil {
+	position: fixed;
+	inset: 0;
+	z-index: 2147483000;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	pointer-events: none;
+	color-scheme: dark;
+	background:
+		radial-gradient(
+			1100px 520px at 50% 38%,
+			color-mix(in srgb, var(--orbital-accent) 12%, transparent),
+			transparent 68%
+		),
+		#050a14;
+	isolation: isolate;
+	contain: strict;
+}
+
+#dsh-theme-veil[data-media='hud'] {
+	animation: orbital-veil-autohide 1ms 4000ms forwards;
+}
+
+#dsh-theme-veil::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background-image:
+		repeating-linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--orbital-accent) 10%, transparent) 0 1px,
+			transparent 1px 56px
+		),
+		repeating-linear-gradient(
+			0deg,
+			color-mix(in srgb, var(--orbital-accent) 9%, transparent) 0 1px,
+			transparent 1px 56px
+		);
+	-webkit-mask-image: radial-gradient(circle at 50% 42%, #000 0%, transparent 62%);
+	mask-image: radial-gradient(circle at 50% 42%, #000 0%, transparent 62%);
+	opacity: 0.5;
+}
+
+#dsh-theme-veil .orbital-veil__sweep {
+	position: absolute;
+	inset: -20% 0 auto 0;
+	height: 42%;
+	pointer-events: none;
+	background: linear-gradient(
+		180deg,
+		transparent,
+		color-mix(in srgb, var(--orbital-accent) 16%, transparent) 62%,
+		color-mix(in srgb, var(--orbital-accent) 40%, transparent) 99%,
+		transparent
+	);
+	opacity: 0.55;
+	animation: orbital-veil-sweep 900ms var(--orbital-ease-out) both;
+}
+
+#dsh-theme-veil .orbital-veil__stage {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 18px;
+	padding: 24px;
+	animation: orbital-veil-stage 520ms var(--orbital-ease-out) both;
+}
+
+#dsh-theme-veil .orbital-veil__reticle {
+	position: absolute;
+	top: -34px;
+	left: 50%;
+	width: 260px;
+	height: 260px;
+	transform: translate(-50%, 0);
+	pointer-events: none;
+	border-radius: 50%;
+	background: repeating-conic-gradient(
+		from 0deg,
+		color-mix(in srgb, var(--orbital-accent) 78%, transparent) 0deg 0.7deg,
+		transparent 0.7deg 15deg
+	);
+	-webkit-mask-image: radial-gradient(circle, transparent 0 47.2%, #000 47.4% 50%, transparent 50.2%);
+	mask-image: radial-gradient(circle, transparent 0 47.2%, #000 47.4% 50%, transparent 50.2%);
+	opacity: 0.55;
+	animation:
+		orbital-veil-reticle 1400ms linear both,
+		orbital-veil-spin 9s linear infinite;
+}
+
+#dsh-theme-veil .orbital-veil__mark {
+	width: 96px;
+	height: 96px;
+	overflow: visible;
+	filter: drop-shadow(0 0 12px color-mix(in srgb, var(--orbital-accent) 55%, transparent));
+}
+
+#dsh-theme-veil .orbital-veil__mark .orbital-mark-line {
+	stroke-dasharray: 260;
+	stroke-dashoffset: 260;
+	animation: orbital-veil-draw 760ms var(--orbital-ease-out) 80ms both;
+}
+
+#dsh-theme-veil .orbital-veil__mark .orbital-mark-core {
+	opacity: 0;
+	animation: orbital-veil-core 460ms var(--orbital-ease-out) 520ms both;
+}
+
+#dsh-theme-veil .orbital-veil__word {
+	font-family: var(--orbital-mono);
+	font-size: 12px;
+	font-weight: 500;
+	letter-spacing: 0.54em;
+	text-indent: 0.54em;
+	color: color-mix(in srgb, var(--orbital-accent) 72%, #e6edfb);
+	text-shadow: 0 0 18px color-mix(in srgb, var(--orbital-accent) 52%, transparent);
+}
+
+#dsh-theme-veil .orbital-veil__status {
+	display: grid;
+	justify-items: center;
+	gap: 3px;
+	font-family: var(--orbital-mono);
+	font-size: 10.5px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, #a8b9d8 82%, transparent);
+}
+
+#dsh-theme-veil .orbital-veil__status span {
+	opacity: 0;
+	animation: orbital-veil-line 260ms var(--orbital-ease) both;
+}
+
+#dsh-theme-veil .orbital-veil__status span:nth-child(1) {
+	animation-delay: 220ms;
+}
+
+#dsh-theme-veil .orbital-veil__status span:nth-child(2) {
+	animation-delay: 460ms;
+}
+
+#dsh-theme-veil .orbital-veil__status span:nth-child(3) {
+	animation-delay: 700ms;
+}
+
+#dsh-theme-veil .orbital-veil__bar {
+	position: relative;
+	width: 216px;
+	height: 2px;
+	overflow: hidden;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--orbital-accent) 14%, transparent);
+}
+
+#dsh-theme-veil .orbital-veil__bar i {
+	display: block;
+	height: 100%;
+	width: 0;
+	background: linear-gradient(90deg, transparent, var(--orbital-accent));
+	box-shadow: 0 0 12px color-mix(in srgb, var(--orbital-accent) 70%, transparent);
+	animation: orbital-veil-bar 1150ms var(--orbital-ease) 120ms both;
+}
+
+#dsh-theme-veil .orbital-veil__meta {
+	font-family: var(--orbital-mono);
+	font-size: 9.5px;
+	letter-spacing: 0.28em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, #7a8cae 85%, transparent);
+	opacity: 0;
+	animation: orbital-veil-line 300ms var(--orbital-ease) 880ms both;
+}
+
+#dsh-theme-veil[data-animation='fade'] {
+	background: var(--dsw-alias-bg-base);
+}
+
+#dsh-theme-veil[data-animation='fade']::before,
+#dsh-theme-veil[data-animation='fade'] .orbital-veil__sweep,
+#dsh-theme-veil[data-animation='fade'] .orbital-veil__reticle,
+#dsh-theme-veil[data-animation='fade'] .orbital-veil__word,
+#dsh-theme-veil[data-animation='fade'] .orbital-veil__status,
+#dsh-theme-veil[data-animation='fade'] .orbital-veil__bar,
+#dsh-theme-veil[data-animation='fade'] .orbital-veil__meta {
+	display: none;
+}
+
+#dsh-theme-veil[data-animation='fade'] .orbital-veil__mark {
+	width: 64px;
+	height: 64px;
+	opacity: 0.85;
+}
+
+#dsh-theme-veil[data-phase='reveal'] {
+	animation: orbital-veil-out 520ms var(--orbital-ease-out) both;
+}
+
+#dsh-theme-veil[data-phase='reveal'] .orbital-veil__stage {
+	animation: orbital-veil-stage-out 460ms var(--orbital-ease-out) both;
+}
+
+#dsh-theme-veil[data-animation='fade'][data-phase='reveal'] {
+	animation: orbital-veil-fade-out 420ms var(--orbital-ease-out) both;
+}
+
+html[data-dsh-theme-phase='reveal'] #root div:has(> [data-shell-overlay]) {
+	animation: orbital-app-in 480ms var(--orbital-ease-out) both;
+}
+
+html[data-dsh-theme-phase='reveal'] #root div:has(> [data-shell-overlay]) > div:nth-of-type(1) {
+	animation: orbital-col-in 420ms var(--orbital-ease-out) 40ms both;
+}
+
+html[data-dsh-theme-phase='reveal'] #root div:has(> [data-shell-overlay]) > div:nth-of-type(2) {
+	animation: orbital-col-in 420ms var(--orbital-ease-out) 90ms both;
+}
+
+html[data-dsh-theme-phase='reveal'] #root div:has(> [data-shell-overlay]) > div:nth-of-type(3) {
+	animation: orbital-col-in 420ms var(--orbital-ease-out) 140ms both;
+}
+
+#dsh-theme-veil .orbital-veil__video {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+
+	object-fit: contain;
+	pointer-events: none;
+	background: #050a14;
+}
+
+#dsh-theme-veil[data-media='video']::before,
+#dsh-theme-veil[data-media='video'] .orbital-veil__stage {
+	display: none;
+}
+
+#dsh-theme-veil[data-media='video']::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background: radial-gradient(125% 85% at 50% 50%, transparent 58%, #050a14 100%);
+}
+
+#dsh-theme-veil .orbital-veil__skip {
+	position: absolute;
+	right: 26px;
+	bottom: 22px;
+	font-family: var(--orbital-mono);
+	font-size: 10px;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, #a8b9d8 68%, transparent);
+	opacity: 0;
+	animation: orbital-veil-line 400ms var(--orbital-ease) 1.4s both;
+}
+
+#dsh-theme-veil[data-media='video'][data-phase='reveal'] {
+	animation: orbital-veil-video-out 900ms var(--orbital-ease-out) both;
+}
+
+/* 会话壳默认涂 --dsw-alias-bg-base（不透明）；只有把它放行，
+   壁纸才能在进行中的会话里透出来。 */
+#root div:has(> [data-shell-overlay]) > div:nth-of-type(2) div:has([data-conversation-region]) {
+	background: transparent;
+}
+
+html .orbital-theme-bg {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	pointer-events: none;
+
+	/* 高度由浏览器半区按 frame 几何钉成 px（见 pinWallpaperSize）：输入框/队列
+	   长高时壁纸只会被中栏裁掉，不会跟着缩放或重新裁切。 */
+	z-index: -1;
+	opacity: 0;
+	--orbital-bg-blur-local: var(--orbital-bg-blur, 6px);
+	--orbital-bg-brightness: 0.92;
+	--orbital-bg-saturation: 104%;
+	filter: blur(var(--orbital-bg-blur-local)) saturate(var(--orbital-bg-saturation))
+		brightness(var(--orbital-bg-brightness));
+	transform: scale(1.04);
+	transition:
+		opacity 520ms var(--orbital-ease),
+		filter 520ms var(--orbital-ease);
+}
+
+html #root div:has(> [data-shell-overlay]) > div:nth-of-type(2):not(:has([data-chat-turn])) .orbital-theme-bg {
+	opacity: var(--orbital-bg-opacity, 0.85);
+}
+
+html[data-dsh-theme-wallpaper='always'] #root div:has(> [data-shell-overlay]) > div:nth-of-type(2):has([data-chat-turn]) .orbital-theme-bg {
+	--orbital-bg-blur-local: var(--orbital-bg-blur-conversation, 8px);
+	opacity: var(--orbital-bg-opacity-conversation, 0.55);
+}
+
+/* ------------------------------------------------------------ §10 关键帧 */
+@keyframes orbital-veil-sweep {
+	from {
+		transform: translateY(-30%);
+		opacity: 0;
+	}
+	35% {
+		opacity: 0.55;
+	}
+	to {
+		transform: translateY(240%);
+		opacity: 0;
+	}
+}
+
+@keyframes orbital-veil-stage {
+	from {
+		opacity: 0;
+		transform: translateY(6px) scale(0.985);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes orbital-veil-reticle {
+	from {
+		opacity: 0;
+		transform: translate(-50%, 0) scale(0.92);
+	}
+	to {
+		opacity: 0.55;
+		transform: translate(-50%, 0) scale(1);
+	}
+}
+
+@keyframes orbital-veil-spin {
+	to {
+		rotate: 360deg;
+	}
+}
+
+@keyframes orbital-veil-draw {
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+@keyframes orbital-veil-core {
+	from {
+		opacity: 0;
+		transform: scale(0.6);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes orbital-veil-line {
+	from {
+		opacity: 0;
+		transform: translateY(3px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes orbital-veil-bar {
+	from {
+		width: 0;
+	}
+	to {
+		width: 100%;
+	}
+}
+
+@keyframes orbital-veil-autohide {
+	to {
+		opacity: 0;
+		visibility: hidden;
+		clip-path: inset(0 0 100% 0);
+	}
+}
+
+@keyframes orbital-veil-out {
+	from {
+		clip-path: inset(0 0 0 0);
+		opacity: 1;
+	}
+	to {
+		clip-path: inset(0 0 100% 0);
+		opacity: 0.9;
+	}
+}
+
+@keyframes orbital-veil-video-out {
+	from {
+		opacity: 1;
+		transform: scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: scale(1.015);
+		visibility: hidden;
+	}
+}
+
+@keyframes orbital-veil-fade-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+		visibility: hidden;
+	}
+}
+
+@keyframes orbital-veil-stage-out {
+	from {
+		opacity: 1;
+		transform: none;
+	}
+	to {
+		opacity: 0;
+		transform: scale(1.04);
+		filter: blur(6px);
+	}
+}
+
+@keyframes orbital-app-in {
+	from {
+		opacity: 0;
+		filter: blur(6px);
+	}
+	to {
+		opacity: 1;
+		filter: none;
+	}
+}
+
+@keyframes orbital-col-in {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+/* 灯带沿卡片外沿缓慢巡游：只转角度，不转元素（转元素会连圆角矩形一起歪掉）。 */
+@keyframes orbital-band-drift {
+	to {
+		--orbital-band-angle: 360deg;
+	}
+}
+
+/* ------------------------------------------------- §11 降级与无障碍 */
+@media (prefers-reduced-motion: reduce) {
+	#dsh-theme-veil {
+		display: none !important;
+	}
+
+	html[data-dsh-theme-phase='reveal'] #root div:has(> [data-shell-overlay]),
+	html[data-dsh-theme-phase='reveal'] #root div:has(> [data-shell-overlay]) > div {
+		animation: none !important;
+	}
+
+	html body::after {
+		display: none;
+	}
+
+	html [data-composer-card]::before {
+		animation: none;
+	}
+
+	html [data-composer-card] {
+		transition: none;
+	}
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	html [data-composer-card] {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+		background: var(--dsw-alias-bg-layer-1);
+	}
+}
+
+html[data-dsh-theme='off'] body::after,
+html[data-dsh-theme='off'] #dsh-theme-veil {
+	display: none !important;
+}

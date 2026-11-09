@@ -124,7 +124,7 @@ pwsh -File .\migrate.ps1
 ## 配置
 
 ```yaml
-- id: secret-broker
+- id: dsh-secret-broker
   name: 'dsh-secret-broker'
   config:
     dataDir: ''            # 默认 <包目录>/data

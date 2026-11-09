@@ -14,6 +14,6 @@
 # deployment can still override any of these values.
 
 - insert:
-    - id: desktop-pet
+    - id: dsh-desktop-pet
       name: 'dsh-desktop-pet'
       config: {}

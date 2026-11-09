@@ -112,7 +112,7 @@ All three are registered by the host plugin at the global layer, independent of 
 ## Configuration
 
 ```yaml
-- id: secret-broker
+- id: dsh-secret-broker
   name: 'dsh-secret-broker'
   config:
     dataDir: ''            # default: <package dir>/data

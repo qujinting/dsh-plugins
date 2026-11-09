@@ -97,7 +97,7 @@ Open that PNG with the read_image tool and judge it by eye before reporting a re
 Example: pin the browser and drop the prompt section
 
 ```yaml
-- id: chrome-cdp
+- id: dsh-chrome-cdp
   config:
     browserPath: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
     registerPromptSection: false

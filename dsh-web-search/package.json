@@ -1,0 +1,72 @@
+{
+  "name": "dsh-web-search",
+  "version": "0.3.2",
+  "description": "DSH plugin (dsh 0.1.5, 0.1.7+, and 0.2.0): a ctx.web search provider that searches with the session's currently selected model and its gateway-native search tool (vercel:perplexity_search and friends), replacing the model-hardcoded built-in DeepSeek search provider.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "lib/client.js",
+    "tools/*.mjs",
+    "cordis.patch.yml",
+    "install.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "link-runtime": "node tools/link-harness-runtime.mjs",
+    "test": "node --test test/parse.test.mjs test/route.test.mjs test/card.test.mjs test/host.test.mjs test/provider.test.mjs test/repair-session-events.test.mjs",
+    "test:live": "node test/live-gateway.mjs",
+    "repair-sessions": "node tools/repair-session-events.mjs scan",
+    "repair-sessions:apply": "node tools/repair-session-events.mjs repair --apply"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "web-search",
+    "search-provider",
+    "clinepass",
+    "vercel-ai-gateway",
+    "openai-compatible",
+    "coding-agent",
+    "plugin"
+  ],
+  "author": "qujinting",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qujinting/dsh-web-search.git"
+  },
+  "homepage": "https://github.com/qujinting/dsh-web-search#readme",
+  "bugs": {
+    "url": "https://github.com/qujinting/dsh-web-search/issues"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
