@@ -119,6 +119,40 @@ Host/Origin 与浏览器认证闸门，没有 connection 服务时退化为仅�
 - 预计超过 30 分钟的活（大二进制全量反编译、provider 冷启动、运行时跟踪），调用时给 `rea_call` 传 `timeoutMs`（上限 2 小时），不要靠重试。
 - 空闲计时器在**有调用进行中**时只会重排、不会停进程——进行中的长调用不会被"空闲"误杀。设置页的「测试连接」在有调用进行时会直接拒绝；改路径/清除路径仍会立刻停进程，因为那是你主动要求的。
 
+## 进程兜底：DSH 关了，REA 会跟着走吗
+
+会。三层，从主动到兜底：
+
+| 场景 | 谁执行 | 实测耗时 |
+|---|---|---|
+| 插件卸载 / HMR / 正常关闭 | Cordis 的 `ctx.effect` disposer → `client.dispose()` → `taskkill /pid <pid> /T /F` | 立即 |
+| Electron 直接 `exit`（不跑 disposer） | `process.on('exit')` 里同步 `taskkill /T` | 退出过程内 |
+| 进程被强杀 / 崩溃 | 父进程持有的 stdio 管道断开 → REA 读到 stdin EOF 自行退出 | 240 ms（`node rea.mjs mcp`）／722 ms（`cmd → npx → node` 链） |
+
+DSH **没有**可订阅的"宿主即将退出"事件（`Event` 目录里没有 `app/quit` 一类），所以第三层不靠钩子，
+而靠 stdio 的语义：插件始终以 `stdio: ['pipe','pipe','pipe']` 启动子进程。**一旦换成 `inherit` 或
+`ignore`，这层兜底就不存在了**——改实现时别动这一条。
+
+实测（两次都 exit 0、事后无残留进程）：
+
+```
+initialize ok: {"name":"rea","version":"6.8.0"}
+closing stdin
+child exited: code=0 signal=null after 240ms    # vendor 路径：node 直启
+child exited: code=0 signal=null after 722ms    # 默认路径：cmd /d /c npx -y rea-agents@6.8.0 mcp
+```
+
+自己查漏：
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='cmd.exe'" |
+  Where-Object { $_.CommandLine -match 'rea-agents|rea\.mjs' } |
+  ForEach-Object { "$($_.ProcessId) $($_.CreationDate.ToString('HH:mm:ss'))" }
+```
+
+有输出说明存在没走到上面三层的进程（通常是另一个正在运行的 DSH 实例在用），按 PID
+`taskkill /pid <pid> /T /F` 即可。
+
 ## 范围与限制
 
 - **只转文本。** `tools/call` 的结果按文本转发；image 块只计数并提示，不挂附件。

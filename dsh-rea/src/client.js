@@ -90,6 +90,12 @@ export class McpStdioClient {
 		return this.#pending.size > 0 || this.#startPromise !== null
 	}
 
+	/** The live child's process id, when one is running. */
+	get pid() {
+		const child = this.#child
+		return child !== null && child.exitCode === null ? child.pid : undefined
+	}
+
 	/** Why the last launch failed, trimmed for a tool result. */
 	get stderrTail() {
 		return this.#stderr.trim()

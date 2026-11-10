@@ -29,6 +29,7 @@
  * @module dsh-rea
  */
 
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { McpStdioClient } from './client.js'
@@ -198,9 +199,31 @@ export function apply(ctx, config) {
 		webCtx.effect(() => registerRoutes(webCtx, surface), 'rea.routes()')
 	})
 
+	// Last line of defence: Electron can exit the process without running Cordis
+	// disposers (`app.exit`, a fatal error dialog). `exit` still fires and must be
+	// synchronous, which is the one place `spawnSync` is the right tool.
+	const killOnExit = () => {
+		const pid = client.pid
+		if (typeof pid !== 'number' || pid <= 0) return
+		try {
+			if (process.platform === 'win32') {
+				spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'taskkill', '/pid', String(pid), '/T', '/F'], {
+					stdio: 'ignore',
+					windowsHide: true,
+				})
+				return
+			}
+			process.kill(pid, 'SIGTERM')
+		} catch {
+			// Best effort: closing the stdio pipe is what actually stops REA.
+		}
+	}
+	process.on('exit', killOnExit)
+
 	// Own the child lifetime: unloading the plugin must not leave an orphaned
 	// REA server holding a target open.
 	ctx.effect(() => () => {
+		process.off('exit', killOnExit)
 		if (idleTimer !== null) clearTimeout(idleTimer)
 		idleTimer = null
 		installer.dispose()

@@ -129,6 +129,41 @@ Two rules for long jobs:
 - For work you expect to exceed 30 minutes (full decompile of a large binary, cold provider startup, runtime tracing), pass `timeoutMs` to `rea_call` (ceiling 2 hours) instead of retrying.
 - The idle watchdog only reschedules while a call is in flight, so a running decompile is never reclaimed as "idle". The settings page's **Test connection** refuses while a call is running; saving or clearing a path still stops the process immediately, because that is what the user asked for.
 
+## Process safety: does REA outlive the Harness?
+
+No. Three layers, strongest first:
+
+| Situation | Who acts | Measured |
+|---|---|---|
+| plugin unload / HMR / normal shutdown | the Cordis `ctx.effect` disposer → `client.dispose()` → `taskkill /pid <pid> /T /F` | immediate |
+| Electron exits without running disposers | synchronous `taskkill /T` inside `process.on('exit')` | during exit |
+| the process is killed or crashes | the stdio pipe the parent holds closes → REA reads stdin EOF and exits by itself | 240 ms (`node rea.mjs mcp`) / 722 ms (`cmd → npx → node`) |
+
+The Harness exposes **no** subscribable "host is exiting" event (there is no `app/quit` in the
+`Event` catalogue), so the third layer does not depend on a hook: it depends on stdio
+semantics. The plugin always spawns with `stdio: ['pipe','pipe','pipe']` — **switching to
+`inherit` or `ignore` removes that safety net**, so do not change it when reworking the launch.
+
+Measured twice, both exit 0 with no leftover process:
+
+```
+initialize ok: {"name":"rea","version":"6.8.0"}
+closing stdin
+child exited: code=0 signal=null after 240ms    # vendor path: node direct
+child exited: code=0 signal=null after 722ms    # default path: cmd /d /c npx -y rea-agents@6.8.0 mcp
+```
+
+Check for leftovers yourself:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='cmd.exe'" |
+  Where-Object { $_.CommandLine -match 'rea-agents|rea\.mjs' } |
+  ForEach-Object { "$($_.ProcessId) $($_.CreationDate.ToString('HH:mm:ss'))" }
+```
+
+Any output means a process escaped the three layers above — usually because another running
+Harness instance owns it; `taskkill /pid <pid> /T /F` clears it.
+
 ## Scope and limits
 
 - **Text only.** `tools/call` results are forwarded as text; image blocks are
