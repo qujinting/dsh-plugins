@@ -43,7 +43,7 @@ REA 的 MCP 服务器带 229 个工具。走通用 MCP 桥（`@deepseek-ai/dsh-m
     toolsToolName: rea_tools
     callToolName: rea_call
     startupTimeoutMs: 180000        # spawn + initialize + tools/list
-    callTimeoutMs: 600000           # 单次 tools/call；反编译可能好几分钟
+    callTimeoutMs: 1800000          # 单次 tools/call；默认 30 分钟，见下文「超时」
     idleTimeoutMs: 600000           # 静默这么久就停进程；0 = 不停
     registerPromptSection: true
     warmup: false                   # true 表示插件激活即启动服务
@@ -104,6 +104,20 @@ Host/Origin 与浏览器认证闸门，没有 connection 服务时退化为仅�
 
 真要回到旧行为，重新安装那个 bundle 即可——两者名字不冲突（`mcp__rea__*` 对
 `rea_tools`/`rea_call`），但同时开着就是双份 schema、双份进程。
+
+## 超时与进程回收
+
+两个"超时"不是一回事：
+
+| 机制 | 默认 | 触发后 |
+|---|---|---|
+| `callTimeoutMs` | 30 分钟 | 这一次调用被放弃（客户端不再等）；**服务端进程继续跑**，只是结果被丢弃 |
+| `idleTimeoutMs` | 10 分钟 | 从**最后一次调用结束**起算；到点且没有进行中的调用时才停进程 |
+
+长任务的两条规则：
+
+- 预计超过 30 分钟的活（大二进制全量反编译、provider 冷启动、运行时跟踪），调用时给 `rea_call` 传 `timeoutMs`（上限 2 小时），不要靠重试。
+- 空闲计时器在**有调用进行中**时只会重排、不会停进程——进行中的长调用不会被"空闲"误杀。设置页的「测试连接」在有调用进行时会直接拒绝；改路径/清除路径仍会立刻停进程，因为那是你主动要求的。
 
 ## 范围与限制
 

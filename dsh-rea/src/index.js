@@ -65,7 +65,7 @@ export function readOptions(config) {
 		cwd: nonEmptyString(source.cwd),
 		dataDir: nonEmptyString(source.dataDir),
 		startupTimeoutMs: positiveInteger(source.startupTimeoutMs) ?? 180_000,
-		callTimeoutMs: positiveInteger(source.callTimeoutMs) ?? 600_000,
+		callTimeoutMs: positiveInteger(source.callTimeoutMs) ?? 1_800_000,
 		idleTimeoutMs: nonNegativeInteger(source.idleTimeoutMs) ?? 600_000,
 		registerPromptSection: source.registerPromptSection ?? true,
 		warmup: source.warmup ?? false,
@@ -145,6 +145,7 @@ export function apply(ctx, config) {
 		},
 		/** Prove the current launch line actually reaches a server. */
 		async probe() {
+			if (client.busy) throw new Error('有 REA 调用正在进行，等它结束后再测试连接')
 			await client.stop('was stopped before a connection test')
 			const catalog = await client.start()
 			return catalog.length
@@ -157,6 +158,14 @@ export function apply(ctx, config) {
 		if (idleTimer !== null) clearTimeout(idleTimer)
 		idleTimer = setTimeout(() => {
 			idleTimer = null
+			// A single call can outlive several idle windows: a decompile on a large
+			// target runs for minutes while another `rea_tools` search may have
+			// finished in between. Restart the window instead of stopping a process
+			// that is still answering someone.
+			if (client.busy) {
+				scheduleIdleStop()
+				return
+			}
 			void client.stop('was stopped after being idle')
 		}, options.idleTimeoutMs)
 		idleTimer.unref?.()

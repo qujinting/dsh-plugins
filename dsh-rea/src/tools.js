@@ -22,6 +22,9 @@ const DESCRIPTION_CHARS = 220
 /** Longest schema text returned inline, in characters. */
 const SCHEMA_CHARS = 12_000
 
+/** Ceiling for a per-call budget, so a typo cannot hold a slot for a day. */
+const MAX_CALL_MS = 2 * 60 * 60 * 1000
+
 /**
  * Build the `rea_tools` catalog tool.
  *
@@ -165,6 +168,7 @@ export function reaCallTool(options, client, onActivity) {
 			`Pass the exact tool name from \`${options.toolsToolName}\` and its arguments object; a name this session has not discovered is rejected instead of guessed.`,
 			'REA works on absolute paths and on live runtimes, so give it the real artifact path, package id, or capture file. Results are the model\'s only evidence: quote measured values, not expectations.',
 			'Some tools take minutes (decompiling, provider startup, runtime tracing); they are not hung. Prefer one well-aimed call over a fan of exploratory ones.',
+			`Each call has a budget (default ${Math.round(options.callTimeoutMs / 60_000)} minutes); raise \`timeoutMs\` before starting a job you expect to run longer, because the server process keeps working after a client-side timeout.`,
 		].join(' '),
 		parameters: {
 			type: 'object',
@@ -178,6 +182,10 @@ export function reaCallTool(options, client, onActivity) {
 					type: 'object',
 					additionalProperties: true,
 					description: 'Arguments object for that tool, matching the input schema the catalog returned. Omit it for tools that take none.',
+				},
+				timeoutMs: {
+					type: 'integer',
+					description: `Budget for this one call in milliseconds, at most ${MAX_CALL_MS}. Default ${options.callTimeoutMs}. A timed-out call is only abandoned client-side — the server keeps working — so set this before a known-long job rather than retrying it.`,
 				},
 			},
 			required: ['tool'],
@@ -213,7 +221,10 @@ export function reaCallTool(options, client, onActivity) {
 				const toolArguments = args.arguments !== null && typeof args.arguments === 'object' && !Array.isArray(args.arguments)
 					? args.arguments
 					: {}
-				const result = await client.call(name, toolArguments, exec.signal)
+				const budget = Number.isSafeInteger(args.timeoutMs) && args.timeoutMs > 0
+					? Math.min(args.timeoutMs, MAX_CALL_MS)
+					: undefined
+				const result = await client.call(name, toolArguments, exec.signal, budget)
 				const blocks = Array.isArray(result?.content) ? result.content : []
 				const text = blocks
 					.filter((block) => block.type === 'text' && typeof block.text === 'string')

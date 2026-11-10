@@ -78,6 +78,18 @@ export class McpStdioClient {
 		return this.#child !== null && this.#child.exitCode === null && this.#disposed === false
 	}
 
+	/**
+	 * Whether a request is in flight right now.
+	 *
+	 * A long decompile holds one `tools/call` open for minutes, and the idle
+	 * watchdog must never take the process away from it. The caller-facing use of
+	 * this is narrow on purpose: it gates shutdown and connection tests, nothing
+	 * that changes what a call may do.
+	 */
+	get busy() {
+		return this.#pending.size > 0 || this.#startPromise !== null
+	}
+
 	/** Why the last launch failed, trimmed for a tool result. */
 	get stderrTail() {
 		return this.#stderr.trim()
@@ -103,11 +115,13 @@ export class McpStdioClient {
 	 * @param name - the server's raw tool name.
 	 * @param args - its arguments object.
 	 * @param signal - cancellation from the tool execution.
+	 * @param timeoutMs - budget for this call; overrides the configured default.
 	 * @returns the MCP `tools/call` result.
 	 */
-	async call(name, args, signal) {
+	async call(name, args, signal, timeoutMs) {
 		await this.start()
-		return await this.#request('tools/call', { name, arguments: args }, this.#options.callTimeoutMs, signal)
+		const budget = Number.isSafeInteger(timeoutMs) && timeoutMs > 0 ? timeoutMs : this.#options.callTimeoutMs
+		return await this.#request('tools/call', { name, arguments: args }, budget, signal)
 	}
 
 	/**

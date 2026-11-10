@@ -46,7 +46,7 @@ Every field is optional; the defaults are what the descriptions promise.
     toolsToolName: rea_tools
     callToolName: rea_call
     startupTimeoutMs: 180000        # spawn + initialize + tools/list
-    callTimeoutMs: 600000           # one tools/call; decompiles take minutes
+    callTimeoutMs: 1800000          # one tools/call; 30 minutes by default, see "Timeouts"
     idleTimeoutMs: 600000           # stop the server after this much silence; 0 = never
     registerPromptSection: true
     warmup: false                   # true starts the server at plugin activation
@@ -114,6 +114,20 @@ capability now, in every mode, and starts a process only when something calls it
 Reinstalling that bundle brings the old behaviour back — the names do not collide
 (`mcp__rea__*` versus `rea_tools`/`rea_call`) — but running both means two copies
 of the schemas and two processes.
+
+## Timeouts and process reclamation
+
+Two different "ten minutes":
+
+| Mechanism | Default | What happens |
+|---|---|---|
+| `callTimeoutMs` | 30 minutes | this one call is abandoned (the client stops waiting); **the server keeps working**, its result is simply dropped |
+| `idleTimeoutMs` | 10 minutes | counted from the end of the last call; the process stops only when nothing is in flight |
+
+Two rules for long jobs:
+
+- For work you expect to exceed 30 minutes (full decompile of a large binary, cold provider startup, runtime tracing), pass `timeoutMs` to `rea_call` (ceiling 2 hours) instead of retrying.
+- The idle watchdog only reschedules while a call is in flight, so a running decompile is never reclaimed as "idle". The settings page's **Test connection** refuses while a call is running; saving or clearing a path still stops the process immediately, because that is what the user asked for.
 
 ## Scope and limits
 
