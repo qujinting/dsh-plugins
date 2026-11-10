@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "REA reverse engineering",
+    "description": "Puts REA's reverse-engineering MCP server behind a catalog search and one dispatcher tool, starting the server on demand instead of loading 229 schemas into every request."
+  }
+}

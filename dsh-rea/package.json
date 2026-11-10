@@ -1,0 +1,54 @@
+{
+  "name": "dsh-rea",
+  "version": "0.2.0",
+  "description": "DSH plugin: REA's reverse-engineering MCP server behind two tools — a catalog search and one dispatcher — with a settings page that points at a local rea.mjs or installs REA from npm into the plugin's own data directory.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "test/**/*.mjs",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs",
+    "check": "node --check src/index.js && node --check src/client.js && node --check src/tools.js && node --check src/prompt.js && node --check src/install.js && node --check src/route.js && node --check lib/client.js"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "rea",
+    "reverse-engineering",
+    "mcp",
+    "tool-gateway"
+  ],
+  "author": "qujinting",
+  "license": "MIT"
+}

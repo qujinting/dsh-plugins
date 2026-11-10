@@ -1,0 +1,18 @@
+# dsh-rea bundle layer.
+#
+# One effect: mount this package's gateway on the host plane. It contributes to
+# `ctx.tools` and `ctx.systemPrompt`, both host rows in the base bundle, so a
+# single top-level row is all it needs — no agent preset, no second mode.
+#
+# The profile's own cordis.patch.yml is applied after this layer, so a
+# deployment can still override any value here, for example to pin the REA
+# version, point `command` at a local checkout, or disable the prompt section.
+#
+# An agent preset that mounts `@deepseek-ai/dsh-mcp-client` for REA can keep
+# doing so; both paths coexist because their tool names differ (`mcp__rea__*`
+# versus `rea_tools`/`rea_call`).
+
+- insert:
+    - id: dsh-rea
+      name: 'dsh-rea'
+      config: {}
