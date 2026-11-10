@@ -17,11 +17,11 @@ import { portableArgs, summarize } from './serialize.js'
 
 /**
  * Build the capability table for one host context.
- * @param host - the plugin context, its options, and the deferred-run helper.
+ * @param host - the plugin context, its options, the deferred-run helper, and the restarter.
  * @returns capability descriptors in listing order.
  */
 export function createCapabilities(host) {
-	const { ctx, options, defer } = host
+	const { ctx, options, defer, restarter } = host
 
 	/**
 	 * Decide whether a service may be reached through the bridge at all.
@@ -265,6 +265,25 @@ export function createCapabilities(host) {
 				const code = Number.isSafeInteger(params.code) ? params.code : 0
 				const exit = requireService('appExit')
 				return defer(() => exit(code), 'app.exit')
+			},
+		},
+		{
+			name: 'app.restart',
+			risk: 'high',
+			summary: 'Relaunch the whole host: arm a detached relay, answer this call, then take the current process down so the relay starts a fresh one.',
+			run: params => {
+				const reason = typeof params.reason === 'string' && params.reason.length > 0 ? params.reason : 'manual'
+				if (restarter === undefined) throw coded('service-unavailable', 'this activation has no relaunch support')
+				return restarter.begin({ trigger: reason })
+			},
+		},
+		{
+			name: 'app.restartState',
+			risk: 'low',
+			summary: 'Report how this host can be relaunched, how much restart budget is left, and what the last relays did.',
+			run: () => {
+				if (restarter === undefined) throw coded('service-unavailable', 'this activation has no relaunch support')
+				return restarter.state()
 			},
 		},
 	]

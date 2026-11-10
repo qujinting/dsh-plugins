@@ -47,10 +47,12 @@
  * @module dsh-bridge
  */
 
-import { appendFile } from 'node:fs'
+import { appendFile } from 'node:fs/promises'
 
 import { createCapabilities } from './capabilities.js'
+import { watchInstallRestart } from './install-watch.js'
 import { Breaker, coded, describeError, readOptions, withTimeout } from './policy.js'
+import { createRestarter, prunePlans } from './relaunch.js'
 
 /**
  * Error codes that mean "this call was refused", never "the host is failing".
@@ -97,20 +99,39 @@ export function apply(ctx, config) {
 	const audit = []
 
 	/**
+	 * Tail of the audit-append chain.
+	 *
+	 * Two calls can finish in the same tick, and `appendFile` is asynchronous:
+	 * firing them independently lets the file's order drift from the ring's,
+	 * which turns "who restarted at 14:02" into a guess. The chain serializes
+	 * appends without blocking the caller.
+	 */
+	let auditQueue = Promise.resolve()
+
+	/**
+	 * Append one line to the audit file, after every line queued before it.
+	 * @param line - the serialized envelope, newline included.
+	 */
+	function queueAudit(line) {
+		auditQueue = auditQueue
+			.then(() => appendFile(options.auditFile, line, 'utf8'))
+			.catch(() => {
+				// A full disk or a rotated path must not fail the call that was logged.
+			})
+	}
+
+	/**
 	 * Record one call.
 	 *
 	 * The ring is for `audit()` during this activation; the file, when
 	 * configured, is what survives the reload the audit trail most needs to
-	 * explain. A failed append is swallowed: the bridge must not fail a call
-	 * because the disk is full or the path rotated away.
+	 * explain.
 	 * @param row - the finished result envelope.
 	 */
 	function record(row) {
 		audit.push(row)
 		if (audit.length > options.auditLimit) audit.splice(0, audit.length - options.auditLimit)
-		if (options.auditFile !== undefined) {
-			appendFile(options.auditFile, `${JSON.stringify(row)}\n`, 'utf8', () => {})
-		}
+		if (options.auditFile !== undefined) queueAudit(`${JSON.stringify(row)}\n`)
 	}
 
 	/**
@@ -135,8 +156,25 @@ export function apply(ctx, config) {
 		return { accepted: true, deferred: true, label }
 	}
 
-	const capabilities = createCapabilities({ ctx, options, defer, selfName: name })
+	/** Plugin log sink: the host decides where info-level lines land. */
+	const log = message => {
+		try {
+			ctx.logger?.info?.(message)
+		} catch {
+			// Logging is never worth failing an activation over.
+		}
+	}
 
+	/*
+	 * The restarter owns the one thing this plugin cannot do from where it runs:
+	 * make the process that owns the window start again. It arms a detached
+	 * relay, waits for that relay's heartbeat, and only then takes this process
+	 * down — see `relaunch.js` for why each step is ordered that way.
+	 */
+	const restarter = createRestarter({ ctx, options, log })
+	prunePlans()
+
+	const capabilities = createCapabilities({ ctx, options, defer, selfName: name, restarter })
 	/**
 	 * Run one capability and return its result envelope.
 	 * @param capability - capability name.
@@ -188,20 +226,35 @@ export function apply(ctx, config) {
 		 *
 		 * 2 added the `serviceAllow` / `methodDeny` gates, made caller arguments
 		 * plain-data only, and closed the default reachable set to inert services.
+		 * 3 added `app.restart` / `app.restartState` and the post-install restart
+		 * hook, so "a bundle was installed and the host needs a restart" is an
+		 * action rather than a sentence for the user.
 		 */
-		version: 2,
+		version: 3,
 		invoke,
 		/** The capability table, for a consumer's own startup self-check. */
 		list: () => capabilities.map(({ name: capability, risk, summary }) => ({ name: capability, risk, summary })),
 		/** The resolved policy, so a consumer can see what this deployment allows. */
-		policy: () => structuredClone({ ...options, serviceDeny: [...options.serviceDeny], serviceAllow: [...options.serviceAllow], confirm: [...options.confirm] }),
+		policy: () => structuredClone({ ...options, serviceDeny: [...options.serviceDeny], serviceAllow: [...options.serviceAllow], confirm: [...options.confirm], restartOnInstallReasons: [...options.restartOnInstallReasons] }),
 		/** The recent audit trail, newest last. */
 		audit: () => audit.slice(),
 		/** Convenience for `service.call`, so the common case needs no params object. */
 		call: (serviceName, method, ...args) => invoke('service.call', { service: serviceName, method, args }),
+		/** Convenience for `app.restart`: one call, confirmation included. */
+		restart: (reason = 'api') => invoke('app.restart', { reason, confirm: true }),
 	}
 
 	ctx.provide('dshBridge', api)
-	ctx.effect(() => () => audit.splice(0), 'dsh-bridge.audit()')
-	ctx.logger?.info?.(`dsh-bridge: ${capabilities.length} capabilities on offer`)
+
+	// The hook itself: a settled `restart-required` installation is the host
+	// saying "this needs a restart". Do it, instead of waiting for a human.
+	const stopWatch = watchInstallRestart({ ctx, options, restarter, log })
+	ctx.effect(() => () => {
+		stopWatch()
+		audit.splice(0)
+	}, 'dsh-bridge.watch()')
+
+	ctx.logger?.info?.(
+		`dsh-bridge: ${capabilities.length} capabilities on offer${options.restartOnInstall ? ', post-install restart armed' : ''}`,
+	)
 }

@@ -9,8 +9,15 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { test } from 'node:test'
+
+// Relaunch plans and the restart ledger live under DSH_HOME; keep them out of
+// the operator's real profile.
+process.env.DSH_HOME ??= mkdtempSync(join(tmpdir(), 'dsh-bridge-test-'))
 
 import { apply } from '../src/index.js'
 

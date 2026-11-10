@@ -10,10 +10,15 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+
+// Relaunch plans and the restart ledger live under DSH_HOME; keep them out of
+// the operator's real profile.
+process.env.DSH_HOME ??= mkdtempSync(join(tmpdir(), 'dsh-bridge-test-'))
 
 import { apply } from '../src/index.js'
 import { REDACTED } from '../src/serialize.js'
@@ -259,10 +264,10 @@ test('the audit file records every call when configured', async () => {
 		await bridge.invoke('service.call', { service: 'sampler', method: 'ping' }, { caller: 'test' })
 		await bridge.invoke('service.call', { service: 'loader', method: 'update' }, { caller: 'test' })
 
-		await new Promise(resolve => setTimeout(resolve, 50))
-		const lines = (await readFile(auditFile, 'utf8')).trim().split('\n')
-		assert.equal(lines.length, 2)
-		const rows = lines.map(line => JSON.parse(line))
+		// The append is deliberately fire-and-forget in the plugin, so the test
+		// waits for the file to settle instead of for a fixed delay.
+		const rows = await waitForRows(auditFile, 2)
+		assert.equal(rows.length, 2)
 		assert.equal(rows[0].caller, 'test')
 		assert.equal(rows[0].ok, true)
 		assert.equal(rows[1].ok, false)
@@ -271,6 +276,30 @@ test('the audit file records every call when configured', async () => {
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+/**
+ * Poll a JSONL file until it holds at least `count` rows.
+ * @param path - file written by the audit sink.
+ * @param count - rows to wait for.
+ * @returns the parsed rows.
+ */
+async function waitForRows(path, count) {
+	const deadline = Date.now() + 2000
+	let rows = []
+	while (Date.now() < deadline) {
+		try {
+			rows = (await readFile(path, 'utf8'))
+				.split('\n')
+				.filter(line => line.trim().length > 0)
+				.map(line => JSON.parse(line))
+			if (rows.length >= count) return rows
+		} catch {
+			// The file may not exist yet on the first pass.
+		}
+		await new Promise(resolve => setTimeout(resolve, 10))
+	}
+	return rows
+}
 
 test('no audit file is written unless one is configured', async () => {
 	const { bridge } = harness({ services: { sampler: { ping: () => 'pong' } } })

@@ -1,6 +1,6 @@
 {
 	"name": "dsh-bridge",
-	"version": "0.2.0",
+	"version": "0.5.0",
 	"description": "DSH 能力网关：把 Harness Host 侧的插件能力收敛成一个带确认、超时、熔断与审计的统一入口，供其他插件调用，而不必各自耦合内部服务名与方法签名。",
 	"type": "module",
 	"main": "src/index.js",
@@ -28,8 +28,8 @@
 		"node": ">=22"
 	},
 	"scripts": {
-		"check": "node --check src/index.js && node --check src/capabilities.js && node --check src/policy.js && node --check src/serialize.js",
-		"test": "node --test test/bridge.test.mjs test/policy.test.mjs test/config.test.mjs test/hardening.test.mjs test/real-cordis.test.mjs"
+		"check": "node --check src/index.js && node --check src/capabilities.js && node --check src/policy.js && node --check src/serialize.js && node --check src/relaunch.js && node --check src/relay.js && node --check src/install-watch.js && node --check src/process-kill.js",
+		"test": "node --test test/bridge.test.mjs test/policy.test.mjs test/config.test.mjs test/hardening.test.mjs test/real-cordis.test.mjs test/restart.test.mjs test/shutdown.test.mjs test/process-kill.test.mjs"
 	},
 	"keywords": [
 		"dsh-plugin",

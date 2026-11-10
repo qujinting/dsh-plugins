@@ -28,7 +28,7 @@
 export const DEFAULTS = {
 	timeoutMs: 15_000,
 	auditLimit: 200,
-	confirm: ['config.edit', 'plugin.restart', 'app.exit'],
+	confirm: ['config.edit', 'plugin.restart', 'app.exit', 'app.restart'],
 	serviceDeny: [
 		// Secrets and configuration ownership.
 		'credentials',
@@ -79,6 +79,33 @@ export const DEFAULTS = {
 	// Opt-in: when set, every call is also appended to this file as one JSON line,
 	// because the in-memory ring dies with the activation that explains it.
 	auditFile: undefined,
+
+	// Post-install restart. The hook listens to `plugin-manager/operation`; when
+	// a settled record reports `restart-required`, the bridge does what upstream
+	// asks the agent to say — it restarts. That is on by default because it is
+	// the whole point of the capability, and it is bounded by `restartBudget`
+	// per `restartWindowMs` so a bundle that fails to load cannot turn every
+	// boot into another restart.
+	restartOnInstall: true,
+	// Which plugin-manager reasons may restart unattended. `remove` is included:
+	// uninstalling a bundle needs the same reload that installing one does.
+	restartOnInstallReasons: ['install', 'remove', 'plugin', 'bundle'],
+	// The relay must prove it is alive within this window, or the host stays up.
+	relayHeartbeatMs: 4_000,
+	// Upper bound on waiting for the old pid to disappear before launching anyway.
+	relayDeadlineMs: 120_000,
+	// Grace before the launch: the old instance may still hold the single-instance lock.
+	relaySettleMs: 1_500,
+	relayRetry: 3,
+	// How long after the receipt the host goes down, so the caller sees its answer.
+	restartDelayMs: 250,
+	restartBudget: 3,
+	restartWindowMs: 300_000,
+	// Desktop only: the window owner is this process' parent, and no IPC channel
+	// asks it to quit, so a restart means terminating it after the relay is up.
+	desktopTerminate: true,
+	// Writes the plan and reports what it would do; starts nothing, kills nothing.
+	restartDryRun: false,
 }
 
 /**
@@ -102,7 +129,37 @@ export function readOptions(config) {
 		auditFile: nonEmptyString(source.auditFile),
 		breakerThreshold: positiveInt(source.breakerThreshold) ?? DEFAULTS.breakerThreshold,
 		breakerCooldownMs: positiveInt(source.breakerCooldownMs) ?? DEFAULTS.breakerCooldownMs,
+		restartOnInstall: booleanValue(source.restartOnInstall, DEFAULTS.restartOnInstall),
+		restartOnInstallReasons: stringList(source.restartOnInstallReasons) ?? [...DEFAULTS.restartOnInstallReasons],
+		relayHeartbeatMs: positiveInt(source.relayHeartbeatMs) ?? DEFAULTS.relayHeartbeatMs,
+		relayDeadlineMs: positiveInt(source.relayDeadlineMs) ?? DEFAULTS.relayDeadlineMs,
+		relaySettleMs: nonNegativeInt(source.relaySettleMs) ?? DEFAULTS.relaySettleMs,
+		relayRetry: positiveInt(source.relayRetry) ?? DEFAULTS.relayRetry,
+		restartDelayMs: nonNegativeInt(source.restartDelayMs) ?? DEFAULTS.restartDelayMs,
+		restartBudget: positiveInt(source.restartBudget) ?? DEFAULTS.restartBudget,
+		restartWindowMs: positiveInt(source.restartWindowMs) ?? DEFAULTS.restartWindowMs,
+		desktopTerminate: booleanValue(source.desktopTerminate, DEFAULTS.desktopTerminate),
+		restartDryRun: booleanValue(source.restartDryRun, DEFAULTS.restartDryRun),
 	}
+}
+
+/**
+ * A boolean config field, falling back when the value is not a boolean.
+ * @param value - raw config field.
+ * @param fallback - default to use.
+ * @returns the boolean.
+ */
+function booleanValue(value, fallback) {
+	return typeof value === 'boolean' ? value : fallback
+}
+
+/**
+ * An integer greater than or equal to zero.
+ * @param value - raw config field.
+ * @returns the integer, or `undefined` when absent or unusable.
+ */
+function nonNegativeInt(value) {
+	return Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }
 
 /**

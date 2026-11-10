@@ -8,9 +8,16 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { apply, name as pluginName } from '../src/index.js'
+
+// The bridge writes relaunch plans and a restart ledger under `DSH_HOME`; a test
+// must never do that to the operator's real profile.
+process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dsh-bridge-bridge-'))
 
 /** Wait one macrotask, so a deferred lifecycle action has run. */
 const tick = () => new Promise(resolve => setTimeout(resolve, 10))
@@ -66,11 +73,13 @@ function harness({ services = {}, config = {}, entries = [] } = {}) {
 test('the plugin provides one service with a versioned, listable contract', () => {
 	const { bridge } = harness()
 	assert.equal(pluginName, 'dsh-bridge')
-	assert.equal(bridge.version, 2)
+	assert.equal(bridge.version, 3)
 
 	const names = bridge.list().map(item => item.name).sort()
 	assert.deepEqual(names, [
 		'app.exit',
+		'app.restart',
+		'app.restartState',
 		'config.edit',
 		'plugin.list',
 		'plugin.restart',
@@ -79,6 +88,23 @@ test('the plugin provides one service with a versioned, listable contract', () =
 		'service.list',
 	])
 	assert.ok(bridge.list().every(item => ['low', 'medium', 'high'].includes(item.risk)))
+})
+
+test('app.restart needs the same confirmation as the other destructive capabilities', async () => {
+	const { bridge } = harness()
+	const refused = await bridge.invoke('app.restart')
+	assert.equal(refused.ok, false)
+	assert.equal(refused.error.code, 'confirmation-required')
+})
+
+test('app.restartState reports the relaunch path and the budget without touching the host', async () => {
+	const { bridge } = harness()
+	const result = await bridge.invoke('app.restartState')
+	assert.equal(result.ok, true)
+	assert.equal(result.value.host.kind, 'process')
+	assert.equal(result.value.host.shutdown, 'self-exit')
+	assert.equal(typeof result.value.budget.left, 'number')
+	assert.ok(Array.isArray(result.value.recent))
 })
 
 test('an unknown capability is reported, not thrown', async () => {

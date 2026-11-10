@@ -12,10 +12,15 @@
  */
 
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
+
+// Relaunch plans and the restart ledger live under DSH_HOME; keep them out of
+// the operator's real profile.
+process.env.DSH_HOME ??= mkdtempSync(join(tmpdir(), 'dsh-bridge-test-'))
 
 import { apply } from '../src/index.js'
 
@@ -49,10 +54,10 @@ test('the bridge speaks the real cordis context', { skip }, async () => {
 	const { root, bridge } = await boot({ sampler: { ping: () => 'pong' } })
 
 	assert.equal(root.fiber.state, 2, 'the root fiber is settled')
-	assert.equal(bridge.version, 2)
+	assert.equal(bridge.version, 3)
 	assert.deepEqual(
 		bridge.list().map(item => item.name).sort(),
-		['app.exit', 'config.edit', 'plugin.list', 'plugin.restart', 'service.call', 'service.describe', 'service.list'],
+		['app.exit', 'app.restart', 'app.restartState', 'config.edit', 'plugin.list', 'plugin.restart', 'service.call', 'service.describe', 'service.list'],
 	)
 
 	const list = await bridge.invoke('service.list')
@@ -111,8 +116,7 @@ test('re-enabling a service still leaves its mutators behind the method gate', {
 	assert.deepEqual(calls, [])
 })
 
-test('the real context refuses non-data arguments before reaching the service', { skip }, async () => {
-	let touched = 0
+test('the real context refuses non-data arguments before reaching the service', { skip }, async () => {	let touched = 0
 	const { bridge } = await boot({
 		sampler: {
 			take(value) {
@@ -130,4 +134,44 @@ test('the real context refuses non-data arguments before reaching the service', 
 	assert.equal(plain.ok, true)
 	assert.equal(plain.value.value, 'object')
 	assert.equal(touched, 1)
+})
+
+test('a restart-requiring operation published by another plugin reaches the hook', { skip }, async () => {
+	// The whole post-install hook rests on one framework fact: `plugin-manager`
+	// publishes a settled operation with `parallel()` on **its** context, and a
+	// listener registered by a *sibling* plugin still receives it. A stand-in
+	// publisher checks that fact against the real runtime instead of against a
+	// comment.
+	const { Context } = await import(pathToFileURL(CORDIS).href)
+	const root = new Context()
+	let manager
+
+	await root.plugin({
+		name: 'fake-plugin-manager',
+		apply(ctx) {
+			manager = ctx
+		},
+	})
+	await root.plugin({ name: 'dsh-bridge', apply }, { restartDryRun: true })
+
+	await manager.parallel('plugin-manager/operation', {
+		id: 'op-real-1',
+		phase: 'settled',
+		application: 'restart-required',
+		restartReason: 'no-hmr',
+		changed: true,
+		reason: 'install',
+		target: 'dsh-bridge',
+	})
+
+	await new Promise(resolve => setTimeout(resolve, 80))
+
+	const { readLedger } = await import('../src/relaunch.js')
+	const { readOptions } = await import('../src/policy.js')
+	const ledger = readLedger(readOptions({ restartDryRun: true }))
+	const armed = ledger.entries.filter(entry => entry.phase === 'dry-run')
+	assert.ok(
+		armed.some(entry => entry.trigger === 'install:install:dsh-bridge'),
+		`no dry-run entry recorded: ${JSON.stringify(ledger.entries)}`,
+	)
 })
