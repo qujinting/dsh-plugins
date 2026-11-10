@@ -80,17 +80,10 @@ export const DEFAULTS = {
 	// because the in-memory ring dies with the activation that explains it.
 	auditFile: undefined,
 
-	// Post-install restart. The hook listens to `plugin-manager/operation`; when
-	// a settled record reports `restart-required`, the bridge does what upstream
-	// asks the agent to say — it restarts. That is on by default because it is
-	// the whole point of the capability, and it is bounded by `restartBudget`
-	// per `restartWindowMs` so a bundle that fails to load cannot turn every
-	// boot into another restart.
-	restartOnInstall: true,
-	// Which plugin-manager reasons may restart unattended. `remove` is included:
-	// uninstalling a bundle needs the same reload that installing one does.
-	restartOnInstallReasons: ['install', 'remove', 'plugin', 'bundle'],
-	// The relay must prove it is alive within this window, or the host stays up.
+	// Restart capability (`app.restart`). The bridge provides the mechanism; it
+	// never decides that a restart is due — the caller does, and passes a
+	// `reason` that lands in the audit trail and the ledger. The budget exists so
+	// a caller stuck in a retry loop cannot restart the host three times in five minutes.
 	relayHeartbeatMs: 4_000,
 	// Upper bound on waiting for the old pid to disappear before launching anyway.
 	relayDeadlineMs: 120_000,
@@ -129,8 +122,6 @@ export function readOptions(config) {
 		auditFile: nonEmptyString(source.auditFile),
 		breakerThreshold: positiveInt(source.breakerThreshold) ?? DEFAULTS.breakerThreshold,
 		breakerCooldownMs: positiveInt(source.breakerCooldownMs) ?? DEFAULTS.breakerCooldownMs,
-		restartOnInstall: booleanValue(source.restartOnInstall, DEFAULTS.restartOnInstall),
-		restartOnInstallReasons: stringList(source.restartOnInstallReasons) ?? [...DEFAULTS.restartOnInstallReasons],
 		relayHeartbeatMs: positiveInt(source.relayHeartbeatMs) ?? DEFAULTS.relayHeartbeatMs,
 		relayDeadlineMs: positiveInt(source.relayDeadlineMs) ?? DEFAULTS.relayDeadlineMs,
 		relaySettleMs: nonNegativeInt(source.relaySettleMs) ?? DEFAULTS.relaySettleMs,

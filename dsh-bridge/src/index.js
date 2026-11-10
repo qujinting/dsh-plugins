@@ -50,7 +50,6 @@
 import { appendFile } from 'node:fs/promises'
 
 import { createCapabilities } from './capabilities.js'
-import { watchInstallRestart } from './install-watch.js'
 import { Breaker, coded, describeError, readOptions, withTimeout } from './policy.js'
 import { createRestarter, prunePlans } from './relaunch.js'
 
@@ -235,7 +234,7 @@ export function apply(ctx, config) {
 		/** The capability table, for a consumer's own startup self-check. */
 		list: () => capabilities.map(({ name: capability, risk, summary }) => ({ name: capability, risk, summary })),
 		/** The resolved policy, so a consumer can see what this deployment allows. */
-		policy: () => structuredClone({ ...options, serviceDeny: [...options.serviceDeny], serviceAllow: [...options.serviceAllow], confirm: [...options.confirm], restartOnInstallReasons: [...options.restartOnInstallReasons] }),
+		policy: () => structuredClone({ ...options, serviceDeny: [...options.serviceDeny], serviceAllow: [...options.serviceAllow], confirm: [...options.confirm] }),
 		/** The recent audit trail, newest last. */
 		audit: () => audit.slice(),
 		/** Convenience for `service.call`, so the common case needs no params object. */
@@ -246,15 +245,11 @@ export function apply(ctx, config) {
 
 	ctx.provide('dshBridge', api)
 
-	// The hook itself: a settled `restart-required` installation is the host
-	// saying "this needs a restart". Do it, instead of waiting for a human.
-	const stopWatch = watchInstallRestart({ ctx, options, restarter, log })
-	ctx.effect(() => () => {
-		stopWatch()
-		audit.splice(0)
-	}, 'dsh-bridge.watch()')
+	// Deliberately nothing else happens here. This plugin provides the restart
+	// capability; it never decides that a restart is due. A caller owns that
+	// decision — `dsh-purge` is the first one — because only the caller knows
+	// whether its own work is finished and worth interrupting the session for.
+	ctx.effect(() => () => audit.splice(0), 'dsh-bridge.audit()')
 
-	ctx.logger?.info?.(
-		`dsh-bridge: ${capabilities.length} capabilities on offer${options.restartOnInstall ? ', post-install restart armed' : ''}`,
-	)
+	ctx.logger?.info?.(`dsh-bridge: ${capabilities.length} capabilities on offer`)
 }

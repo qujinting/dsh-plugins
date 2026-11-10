@@ -21,8 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dsh-bridge-restart-'))
 
-const { DEFAULTS, readOptions } = await import('../src/policy.js')
-const { decideRestart, watchInstallRestart } = await import('../src/install-watch.js')
+const { readOptions } = await import('../src/policy.js')
 const {
 	createRestarter,
 	describeHost,
@@ -80,138 +79,6 @@ function fakeCtx() {
 	}
 	return { ctx, calls }
 }
-
-test('the decision refuses everything that is not a finished, restart-requiring install', () => {
-	const seen = { seen: new Set(), armed: false }
-	const settled = {
-		id: 'op-1',
-		phase: 'settled',
-		application: 'restart-required',
-		restartReason: 'no-hmr',
-		changed: true,
-		reason: 'install',
-		target: 'dsh-bridge',
-	}
-
-	assert.deepEqual(decideRestart(settled, options({ restartOnInstall: false }), seen), { take: false, why: 'disabled' })
-	assert.equal(decideRestart(null, options(), seen).why, 'not-an-operation')
-	assert.equal(decideRestart({ ...settled, phase: 'started' }, options(), seen).why, 'not-settled')
-	assert.equal(decideRestart({ ...settled, application: 'applied' }, options(), seen).why, 'no-restart-required')
-	assert.equal(decideRestart({ ...settled, changed: false }, options(), seen).why, 'nothing-changed')
-	assert.equal(decideRestart({ ...settled, reason: 'unknown-reason' }, options(), seen).why, 'reason-filtered')
-
-	const taken = decideRestart(settled, options(), seen)
-	assert.equal(taken.take, true)
-	assert.equal(taken.target, 'dsh-bridge')
-	assert.equal(taken.restartReason, 'no-hmr')
-
-	const again = decideRestart(settled, options(), seen)
-	assert.equal(again.take, true, 'the pure decision does not dedupe on its own')
-
-	assert.equal(decideRestart(settled, options(), { seen: new Set(['op-1']), armed: false }).why, 'duplicate')
-	assert.equal(decideRestart(settled, options(), { seen: new Set(), armed: true }).why, 'already-armed')
-})
-
-test('a removal counts as a change that needs the same restart', () => {
-	const decision = decideRestart(
-		{ id: 'op-2', phase: 'settled', application: 'restart-required', changed: true, reason: 'remove', target: 'gone' },
-		options(),
-		{ seen: new Set(), armed: false },
-	)
-	assert.equal(decision.take, true)
-	assert.equal(decision.target, 'gone')
-	assert.equal(decision.restartReason, null)
-})
-
-test('the watcher restarts once per settled install and ignores the rest', async () => {
-	const listeners = []
-	const started = []
-	const ctx = {
-		on(name, listener) {
-			listeners.push({ name, listener })
-			return () => listeners.splice(0, listeners.length)
-		},
-	}
-	const restarter = {
-		async begin(request) {
-			started.push(request)
-			return { accepted: true, deferred: true, shutdownInMs: 250 }
-		},
-	}
-
-	const stop = watchInstallRestart({ ctx, options: options(), restarter })
-	assert.equal(listeners.length, 1)
-	assert.equal(listeners[0].name, 'plugin-manager/operation')
-
-	const settle = extra =>
-		listeners[0].listener({
-			id: 'op-a',
-			phase: 'settled',
-			application: 'restart-required',
-			restartReason: 'no-hmr',
-			changed: true,
-			reason: 'install',
-			target: 'dsh-bridge',
-			...extra,
-		})
-
-	settle({})
-	await tick()
-	assert.equal(started.length, 1)
-	assert.match(started[0].trigger, /^install:install:dsh-bridge$/)
-
-	// A second record for the same operation must not arm another relay.
-	settle({})
-	await tick()
-	assert.equal(started.length, 1)
-
-	stop()
-	assert.equal(listeners.length, 0)
-})
-
-test('the watcher stays out of the way when the install applied live', async () => {
-	const listeners = []
-	const started = []
-	const ctx = {
-		on(name, listener) {
-			listeners.push({ name, listener })
-			return () => {}
-		},
-	}
-	const stop = watchInstallRestart({ ctx, options: options(), restarter: { begin: async r => started.push(r) } })
-	listeners[0].listener({ id: 'op-b', phase: 'settled', application: 'applied', changed: true, reason: 'install' })
-	await tick()
-	assert.deepEqual(started, [])
-	stop()
-})
-
-test('a watcher failure is logged, not thrown into the host dispatch', async () => {
-	const listeners = []
-	const lines = []
-	const ctx = { on: (name, listener) => (listeners.push(listener), () => {}) }
-	const stop = watchInstallRestart({
-		ctx,
-		options: options(),
-		restarter: {
-			async begin() {
-				throw new Error('relay-unavailable')
-			},
-		},
-		log: message => lines.push(message),
-	})
-	listeners[0]({
-		id: 'op-c',
-		phase: 'settled',
-		application: 'restart-required',
-		changed: true,
-		reason: 'install',
-		target: 'x',
-	})
-	await tick()
-	assert.equal(lines.length, 1)
-	assert.match(lines[0], /relay-unavailable/)
-	stop()
-})
 
 test('the host is described as a process, or as the Desktop app whose parent owns the window', () => {
 	const plain = describeHost({})
@@ -394,12 +261,11 @@ test('the relay reports its phases and, in dry-run, starts nothing', async () =>
 	assert.match(log, /\[relay:relaunched\]/)
 })
 
-test('the resolved defaults keep the hook on and the budget finite', () => {
+test('the resolved defaults keep the capability available and the budget finite', () => {
 	const opts = options()
-	assert.equal(opts.restartOnInstall, DEFAULTS.restartOnInstall)
-	assert.equal(opts.restartOnInstall, true)
+	assert.ok(opts.confirm.includes('app.restart'), 'the caller must confirm a restart explicitly')
 	assert.ok(opts.restartBudget > 0 && opts.restartBudget <= 5)
 	assert.ok(opts.restartWindowMs >= 60_000)
-	assert.ok(opts.confirm.includes('app.restart'))
-	assert.deepEqual(opts.restartOnInstallReasons, ['install', 'remove', 'plugin', 'bundle'])
+	assert.equal('restartOnInstall' in opts, false, 'the bridge no longer decides when to restart')
+	assert.equal('restartOnInstallReasons' in opts, false)
 })

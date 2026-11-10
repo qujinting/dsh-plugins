@@ -12,21 +12,20 @@
 # `methodDeny` 是方法级第二道闸，按服务名（精确或前缀，`*` 表示所有服务）配置；
 # 放开 loader 这类服务时靠它挡回 update/create/remove/import。
 #
-# 安装后重启（restartOnInstall 一族）：
-# plugin-manager 每次改插件都会以 `plugin-manager/operation` 广播一条结算记录。
-# 记录里 application 是 restart-required 时，宿主自己没法把新条目装进正在跑的进程，
-# 上游的做法是让 agent 转告用户「请重启 DSH」。dsh-bridge 监听这条广播并直接重启：
+# 重启能力（app.restart）：
+# 桥只提供机制，不判断「什么时候该重启」——那是调用方的事。调用方传一个 reason
+# （写进审计与账本），桥按下面的顺序执行：
 #
 #   1. 写一份计划（启动什么、在哪个目录、等哪个 pid 退场）；
 #   2. 拉起分离的 relay.js（能活过本进程）；
 #   3. 等到 relay 的心跳才算数——收不到心跳就放弃，宿主保持运行；
-#   4. 心跳到手后本进程退出：桌面端杀掉持有窗口的父进程，web/stdio 宿主走 appExit；
+#   4. 心跳到手后本进程退出：桌面端终止持有窗口的父进程（没有重启 IPC），
+#      web/stdio 宿主走 appExit；
 #   5. relay 等旧进程消失、等过单实例锁，用清掉 ELECTRON_RUN_AS_NODE / NODE_OPTIONS
 #      的环境拉起新实例。
 #
 # 硬约束：`restartBudget` / `restartWindowMs` 限制单位时间内的重启次数（默认 5 分钟 3 次），
-# 免得一个装不上的包把「装完重启」变成「无限重启」；`restartDryRun: true` 只写计划不动作，
-# 用来先验证计划内容；`restartOnInstallReasons` 决定哪类变更允许自动重启。
+# 免得调用方的重试循环把宿主反复重启；`restartDryRun: true` 只写计划不动作，用来先验证计划内容。
 - insert:
     - id: dsh-bridge
       name: 'dsh-bridge'
@@ -93,12 +92,6 @@
             - update
         breakerThreshold: 5
         breakerCooldownMs: 30000
-        restartOnInstall: true
-        restartOnInstallReasons:
-          - install
-          - remove
-          - plugin
-          - bundle
         relayHeartbeatMs: 4000
         relayDeadlineMs: 120000
         relaySettleMs: 1500

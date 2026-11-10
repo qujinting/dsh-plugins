@@ -200,8 +200,6 @@ await bridge.invoke('config.edit', { plugin: 'my-plugin', patch: { retries: 5 },
       loader: [commit, create, ensureId, remove, resolveGroup, stop, update]
     breakerThreshold: 5         # 连续几次「宿主侧」失败后熔断
     breakerCooldownMs: 30000    # 熔断冷却多久
-    restartOnInstall: true      # 安装/卸载结算为 restart-required 时直接重启，而不是转告用户
-    restartOnInstallReasons: [install, remove, plugin, bundle]   # 哪类变更允许自动重启
     relayHeartbeatMs: 4000      # relay 必须在此时间内报活，否则放弃这次重启
     relayDeadlineMs: 120000     # relay 等旧进程消失的上限
     relaySettleMs: 1500         # 旧进程退出后等多久再拉起（躲单实例锁）
@@ -223,30 +221,29 @@ await bridge.invoke('config.edit', { plugin: 'my-plugin', patch: { retries: 5 },
 
 `methodDeny` 是为了让「有意的例外」不至于变成新洞：把 `serviceDeny` 改成 `[credentials, configEditor, dshBridge]`（本插件早期版本的默认值）会把 `loader` 重新放开，而按服务配置的规则集依然拒掉它的写方法。注意：你自己写 `methodDeny` 时，`'*'` 键会替换全局默认；只加某个服务键则不会——默认保留，该键只替换那一个服务的清单。
 
-## 安装完成后的重启
+## 重启能力（app.restart）
 
-plugin-manager 每改一次插件都会广播一条 `plugin-manager/operation`。`application: restart-required`
-的含义是：新条目装不进正在跑的进程，得重开。上游对这种情况给出的处理是给 agent 一句话——「告诉用户重启 DSH」。
-dsh-bridge 监听那条广播，把这句话换成动作：
+**桥只提供机制，不判断"什么时候该重启"。** 什么时候重启是调用方的事——它知道自己的工作做完了没有、值不值得打断这次会话。
+`dsh-purge` 是第一个调用方：补丁写完、`ensureRestartReady()` 过了，它 `ctx.get('dshBridge').restart('purge-panel')`，
+桥照着下面五步执行：
 
 1. 写计划（启动什么、cwd 是哪、要等哪个 pid 消失、清哪些环境变量）到 `$DSH_HOME/dsh-bridge/relaunch/`；
 2. 用 `process.execPath` 分离拉起 `src/relay.js`（`detached: true` + `unref()`，活得过本进程）；
 3. 等 relay 的心跳（`<plan>.hb.json`）：**收不到就整件事作废**，宿主原地不动；
 4. 心跳到手，先把信封回答给调用方，再在 `restartDelayMs` 后让本进程退场：
-   - web / stdio 宿主：走 `appExit` 优雅退出；
    - 桌面端：宿主是 Electron 的子进程，`DESKTOP_IPC` 没有重启通道，所以退场 = 终止持有窗口的父进程
      （Windows 用 `taskkill /PID <ppid> /F`，其它平台 `SIGTERM`）。这里**故意不用** `appExit`：它只停掉子进程，
      主进程会把子进程再拉起来，窗口就一直对着一个死掉的端口转圈——正是这条路径要避免的失败。
+   - web / stdio 宿主：走 `appExit` 优雅退出；
 5. relay 等旧 pid 消失、等过 `relaySettleMs`（让单实例锁释放），再用**清掉 `ELECTRON_RUN_AS_NODE` / `NODE_OPTIONS`**
    的环境拉起新实例。
 
 第 5 步为什么非清不可：桌面端宿主跑在 Electron 的 node 模式里，环境带 `ELECTRON_RUN_AS_NODE=1`；继承它的子进程
 用同一个 exe 启动，却会以纯 node 模式跑——不开窗口、跑完即退，而日志里写着「已重启」。
 
-三道限制：`restartBudget` / `restartWindowMs`（默认 5 分钟 3 次）挡住「装不上的包 → 每次开机再重启」的循环；
-`changed: false` 的结算不重启（磁盘上什么都没变，没有可应用的）；`restartDryRun: true` 只写计划、只记账，
-适合先看它打算干什么。想手工触发同一条链路，用 `app.restart`（需 `{ confirm: true }`）；`app.restartState`
-给出这台宿主的退场方式、剩余预算和 relay 日志尾巴。运行态文件都在 `$DSH_HOME/dsh-bridge/`：
+三道限制：`restartBudget` / `restartWindowMs`（默认 5 分钟 3 次）挡住调用方的重试循环把宿主反复重启；
+`restartDryRun: true` 只写计划、只记账，适合先看它打算干什么；`app.restart` 在 `confirm` 清单里，调用方必须显式确认。
+`app.restartState` 给出这台宿主的退场方式、剩余预算和 relay 日志尾巴。运行态文件都在 `$DSH_HOME/dsh-bridge/`：
 `relay.log`、`restart-ledger.json`、`relaunch/*.plan.json`。
 
 **重启没生效时先看 `relay.log`。** 宿主在退场前会写一行 `[host:shutdown] terminate <pid> → ok=…`，
@@ -297,9 +294,6 @@ plugin_manager({ action: 'install_bundle', target: 'D:/project/qujinting/dsh-plu
 | `configEditor.edit(entry, change)` 的「等于继承值即删行」语义 | `.../dsh-config-editor/lib/index.js:98` |
 | `loader` 的写方法经 `commit()` 落盘到 profile patch | `.../dsh-app-boot/lib/index.js:806`、`.../cordis-plugin-loader/lib/index.js:293` |
 | 桌面端没有重启 IPC 通道 | `resources/app/lib/main.js:1445-1477` |
-| plugin-manager 把结算记录用 `parallel()` 广播成 `plugin-manager/operation` | `.../dsh-plugin-manager/lib/index.js:3213` |
-| 上游「需要重启」的文案就是 `nextStep: Tell the user to restart DSH…` | `.../dsh-plugin-manager/lib/types/tools.js:57` |
-| cordis 全树共用同一个 EventsService，兄弟插件的监听也收得到 | `.../cordis/lib/index.js:1759`、`1776`（`extend()` 走原型继承） |
 | 桌面宿主是 Electron 的子进程，仅认 `shutdown` / `ready` / `fatal` 等 IPC 消息 | `.../dsh-desktop-host/lib/index.js:489`、`resources/app/lib/main.js:10007` |
 | `ELECTRON_RUN_AS_NODE=1` 会随宿主环境传给子进程 | `resources/app/lib/main.js:9748` |
 | 扩展点选择与升级稳定性原则 | `.../skills/cordis-plugin-development/references/practices.md` |

@@ -212,23 +212,23 @@ The full default deny list is in `src/policy.js`; the bundle layer ships the sam
 
 `methodDeny` is what keeps a deliberate exception from becoming a new hole. Setting `serviceDeny: [credentials, configEditor, dshBridge]` (as an earlier version of this plugin shipped) re-opens `loader`, and the per-service rule set still refuses its mutators. An `'*'` entry in your own `methodDeny` replaces the global defaults; adding one service key does not — the defaults stay and the key replaces only that service's list.
 
-## The restart an install asks for
+## The restart capability (`app.restart`)
 
-Every plugin change makes `plugin-manager` publish a `plugin-manager/operation` record. `application: restart-required`
-means the new entry cannot be loaded into the running process. Upstream's handling of that state is a sentence for the
-agent to repeat — `nextStep: "Tell the user to restart DSH to apply this change."` This package listens to the same
-record and turns the sentence into the action:
+**The bridge provides the mechanism; it never decides that a restart is due.** That decision belongs to the caller,
+which is the only party that knows whether its own work is finished and worth interrupting the session for. `dsh-purge`
+is the first caller: patches written, `ensureRestartReady()` passed, then `ctx.get('dshBridge').restart('purge-panel')`.
+The bridge then:
 
-1. write a plan (what to start, its cwd, which pid must go away first, which variables to scrub) under
+1. writes a plan (what to start, its cwd, which pid must go away first, which variables to scrub) under
    `$DSH_HOME/dsh-bridge/relaunch/`;
-2. spawn `src/relay.js` with `process.execPath`, `detached: true` + `unref()` — it outlives this process;
-3. wait for the relay's heartbeat (`<plan>.hb.json`): **no heartbeat cancels everything**, the host stays up;
-4. once it beats, answer the caller first, then take this process down after `restartDelayMs`:
-   - web / stdio hosts: `appExit`, so the shutdown is graceful;
-   - Desktop: the host is an Electron **child**, and `DESKTOP_IPC` has no restart channel, so closing the window means
-     terminating the parent that owns it (`taskkill /PID <ppid> /F` on Windows, `SIGTERM` elsewhere). `appExit` is
-     deliberately **not** used here: a graceful exit stops only the child, the main process respawns it, and the open
+2. spawns `src/relay.js` with `process.execPath`, `detached: true` + `unref()` — it outlives this process;
+3. waits for the relay's heartbeat (`<plan>.hb.json`): **no heartbeat cancels everything**, the host stays up;
+4. answers the caller, then takes this process down after `restartDelayMs`:
+   - Desktop: the host is an Electron **child**, and `DESKTOP_IPC` has no restart channel, so going down means
+     terminating the parent that owns the window (`taskkill /PID <ppid> /F` on Windows, `SIGTERM` elsewhere). `appExit`
+     is deliberately **not** used here: a graceful exit stops only the child, the main process respawns it, and the open
      window is left spinning on a dead origin — the exact failure this path exists to avoid.
+   - web / stdio hosts: `appExit`, so the shutdown is graceful;
 5. the relay waits for the old pid to disappear, waits out `relaySettleMs` (the single-instance lock), then starts the
    new instance with `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS` **removed**.
 
@@ -236,12 +236,11 @@ Step 5 is not optional: the Desktop host runs in Electron's Node mode with `ELEC
 A child that inherits it starts the same executable as a plain Node program — no window, exits at once — while the log
 says the relaunch succeeded.
 
-Three limits: `restartBudget` / `restartWindowMs` (3 per 5 minutes by default) stop a bundle that fails to load from
-turning every boot into another restart; a record with `changed: false` never restarts (nothing to apply); and
-`restartDryRun: true` writes the plan and the ledger entry without starting or killing anything. To drive the same
-chain by hand, call `app.restart` with `{ confirm: true }`; `app.restartState` reports the shutdown path, the remaining
-budget, and the relay log tail. Runtime files live in `$DSH_HOME/dsh-bridge/` (`relay.log`,
-`restart-ledger.json`, `relaunch/*.plan.json`).
+Three limits: `restartBudget` / `restartWindowMs` (3 per 5 minutes by default) stop a caller's retry loop from
+restarting the host over and over; `restartDryRun: true` writes the plan and the ledger entry without starting or
+killing anything; and `app.restart` sits on the `confirm` list, so a caller must ask for it explicitly.
+`app.restartState` reports the shutdown path, the remaining budget, and the relay log tail. Runtime files live in
+`$DSH_HOME/dsh-bridge/` (`relay.log`, `restart-ledger.json`, `relaunch/*.plan.json`).
 
 **If a restart does nothing, read `relay.log` first.** The host writes one line before it leaves —
 `[host:shutdown] terminate <pid> → ok=…` — and the relay retries the kill 900 ms later if the target is
@@ -292,9 +291,6 @@ None of this is guesswork; every claim can be checked in a local installation:
 | `configEditor.edit(entry, change)` deletes the row when it equals the inherited config | `.../dsh-config-editor/lib/index.js:98` |
 | `loader` mutators persist through `commit()` into the profile patch | `.../dsh-app-boot/lib/index.js:806`, `.../cordis-plugin-loader/lib/index.js:293` |
 | There is no restart IPC on the desktop side | `resources/app/lib/main.js:1445-1477` |
-| `plugin-manager` broadcasts a settled record as `plugin-manager/operation` through `parallel()` | `.../dsh-plugin-manager/lib/index.js:3213` |
-| Upstream's "needs a restart" text is `nextStep: Tell the user to restart DSH…` | `.../dsh-plugin-manager/lib/types/tools.js:57` |
-| One EventsService for the whole tree, so a sibling plugin's listener receives it | `.../cordis/lib/index.js:1759`, `1776` (`extend()` inherits by prototype) |
 | The Desktop host is an Electron child and accepts only `shutdown` / `ready` / `fatal` over IPC | `.../dsh-desktop-host/lib/index.js:489`, `resources/app/lib/main.js:10007` |
 | `ELECTRON_RUN_AS_NODE=1` is handed to every child of the Desktop host | `resources/app/lib/main.js:9748` |
 | Extension-point selection and upgrade stability | `.../skills/cordis-plugin-development/references/practices.md` |
