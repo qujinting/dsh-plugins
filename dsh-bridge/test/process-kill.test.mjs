@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Tests for the one function that actually ends a process.
  *
  * `taskkill` failing silently is the failure mode that produced a spinner with
@@ -10,7 +10,22 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { test } from 'node:test'
 
-import { forceKill, isAlive } from '../src/process-kill.js'
+import { decodeConsole, decodeConsoleOutput, forceKill, isAlive } from '../src/process-kill.js'
+
+test('a localized console message is decoded as GBK instead of turning into noise', () => {
+	// "成功" in GBK — exactly what taskkill writes on a zh-CN Windows.
+	const gbk = Buffer.from([0xb3, 0xc9, 0xb9, 0xa6])
+	assert.equal(decodeConsole(gbk), '成功')
+
+	// Valid UTF-8 must win outright: a GBK decoder would also "succeed" here.
+	assert.equal(decodeConsole(Buffer.from('done', 'utf8')), 'done')
+	assert.equal(decodeConsole(Buffer.from([0xe6, 0x88, 0x90, 0xe5, 0x8a, 0x9f])), '成功')
+
+	assert.equal(decodeConsole(null), '')
+	assert.equal(decodeConsole(undefined), '')
+	assert.equal(decodeConsole(Buffer.alloc(0)), '')
+	assert.equal(decodeConsoleOutput(Buffer.from('a', 'utf8'), null, Buffer.from('b', 'utf8')), 'a b')
+})
 
 test('an invalid pid is refused instead of being passed to taskkill', () => {
 	for (const pid of [0, -1, 1.5, Number.NaN, undefined, null]) {
