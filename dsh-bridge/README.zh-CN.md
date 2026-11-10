@@ -307,11 +307,11 @@ plugin_manager({ action: 'install_bundle', target: 'D:/project/qujinting/dsh-plu
 ## 开发
 
 ```bash
-npm run check   # 七个模块的语法检查
-npm test        # 74 个用例：单元 + 对抗 + 真实 cordis 集成 + relay 干跑
+npm run check   # 八个模块的语法检查
+npm test        # 81 个用例：单元 + 对抗 + 真实 cordis 集成 + relay 干跑 + 停机 + 终止
 ```
 
-`test/hardening.test.mjs` 是边界本身（默认黑名单、白名单模式、方法级闸门、入参校验、值脱敏、审计落盘）的回归集；`test/real-cordis.test.mjs` 会从安装目录（`DSH_APP_ROOT`，默认 `D:/apps/DSH/resources/app/dsh`）里真的拉一个 `Context` 起来跑同一批能力，装不到时自动跳过。
+`test/hardening.test.mjs` 是边界本身（默认黑名单、白名单模式、方法级闸门、入参校验、值脱敏、审计落盘）的回归集；`test/real-cordis.test.mjs` 会从安装目录（`DSH_APP_ROOT`，默认 `D:/apps/DSH/resources/app/dsh`）里真的拉一个 `Context` 起来跑同一批能力，装不到时自动跳过。`test/shutdown.test.mjs` 钉住「重启到底杀谁」——桌面端是窗口所有者，其它宿主走 `appExit`；`test/process-kill.test.mjs` 直接杀掉一个真实子进程来验证，而不是给 `taskkill` 打桩。
 
 其余测试跑在手写的假上下文上，它只实现 `get / provide / effect / reflect.props / fiber.restart / logger`——这本身也是一句承诺：如果哪天插件需要更多框架能力，就说明它耦合得比宣称的更深了。
 

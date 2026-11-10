@@ -302,11 +302,11 @@ None of this is guesswork; every claim can be checked in a local installation:
 ## Development
 
 ```bash
-npm run check   # syntax check for the seven modules
-npm test        # 74 cases: unit, adversarial, real-cordis integration, relay dry run
+npm run check   # syntax check for the eight modules
+npm test        # 81 cases: unit, adversarial, real-cordis integration, relay dry run, shutdown, kill
 ```
 
-`test/hardening.test.mjs` is the regression suite for the boundary itself: default deny list, allowlist mode, method gate, argument validation, value redaction, audit file. `test/real-cordis.test.mjs` boots an actual `Context` from the installation (`DSH_APP_ROOT`, default `D:/apps/DSH/resources/app/dsh`) and drives the same capabilities through it; it skips when the installation is absent.
+`test/hardening.test.mjs` is the regression suite for the boundary itself: default deny list, allowlist mode, method gate, argument validation, value redaction, audit file. `test/real-cordis.test.mjs` boots an actual `Context` from the installation (`DSH_APP_ROOT`, default `D:/apps/DSH/resources/app/dsh`) and drives the same capabilities through it; it skips when the installation is absent. `test/shutdown.test.mjs` pins which process a restart takes down — the window owner on the Desktop, `appExit` everywhere else — and `test/process-kill.test.mjs` kills a real child instead of mocking `taskkill`.
 
 The remaining tests run on a hand-built fake context implementing only `get / provide / effect / reflect.props / fiber.restart / logger` — which is itself a promise: if the plugin ever needs more of the framework than that, it is coupling harder than it claims.
 
