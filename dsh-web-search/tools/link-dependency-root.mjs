@@ -34,7 +34,7 @@
  * `<DSH_HOME>/profiles/node_modules` closure decays after a DSH reinstall.
  */
 import { createRequire } from 'node:module';
-import { existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, rmdirSync, statSync, symlinkSync, unlinkSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readSync, readlinkSync, readdirSync, rmdirSync, statSync, symlinkSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -152,11 +152,48 @@ function scanForInstalls(root, depth, found = []) {
 }
 
 /**
+ * Whether an asar's file table carries the DSH Desktop host package directory, which keeps other
+ * Electron apps on the machine from qualifying. The table nests directories, so the marker is the
+ * quoted key, not a full path.
+ */
+function isDshPayload(asarPath) {
+	let fd;
+	try {
+		fd = openSync(asarPath, 'r');
+		const head = Buffer.alloc(16);
+		if (readSync(fd, head, 0, 16, 0) < 16 || head.readUInt32LE(0) !== 4) return false;
+		const jsonLength = head.readUInt32LE(12);
+		if (jsonLength <= 0 || jsonLength > 64 * 1024 * 1024) return false;
+		const jsonBuf = Buffer.alloc(jsonLength);
+		let read = 0;
+		// A single readSync may return short; the file table is several megabytes.
+		while (read < jsonLength) {
+			const chunk = readSync(fd, jsonBuf, read, jsonLength - read, 16 + read);
+			if (chunk <= 0) break;
+			read += chunk;
+		}
+		return read === jsonLength && jsonBuf.toString('utf8').includes('"dsh-desktop-host"');
+	} catch {
+		return false;
+	} finally {
+		if (fd !== undefined) closeSync(fd);
+	}
+}
+
+/** The asar an install may keep its closure in, whether or not it is really a DSH payload. */
+function asarCandidateOf(install) {
+	const candidate = join(install, 'resources', 'app.asar');
+	return existsSync(candidate) ? candidate : undefined;
+}
+
+/**
  * Resolve the closure directory.
- * @returns {{dir: string, install?: string, source: string} | {error: string, tried: string[]}}
+ * @returns {{dir: string, install?: string, source: string}
+ *   | {error: string, tried: string[], packed: string[]}}
  */
 function locateClosure(options) {
 	const tried = [];
+	const asarCandidates = [];
 	const explicit = options.modules ?? process.env.DSH_HARNESS_MODULES;
 	if (explicit !== undefined && String(explicit).length > 0) {
 		const dir = resolve(String(explicit));
@@ -173,6 +210,8 @@ function locateClosure(options) {
 	}
 
 	for (const install of installs) {
+		const asarCandidate = asarCandidateOf(install);
+		if (asarCandidate !== undefined) asarCandidates.push(asarCandidate);
 		for (const layout of CLOSURE_LAYOUTS) {
 			const dir = join(install, layout);
 			const problem = closureProblem(dir);
@@ -180,7 +219,9 @@ function locateClosure(options) {
 			if (existsSync(dir)) tried.push(dir + ' (' + problem + ')');
 		}
 	}
-	return { error: 'no usable DSH module closure found', tried };
+	// Only pay for header inspection when nothing usable was found, and only
+	// report payloads that really are DSH: other Electron apps are everywhere.
+	return { error: 'no usable DSH module closure found', tried, packed: asarCandidates.filter(isDshPayload) };
 }
 
 /** Remove an existing link at `path`. A real directory is left alone. */
@@ -218,6 +259,11 @@ async function main() {
 		if (found.tried.length > 0) {
 			console.error('\nCandidates rejected:');
 			for (const line of found.tried) console.error('  ' + line);
+		}
+		for (const payload of found.packed) {
+			console.error('\nThis install keeps its closure packed inside ' + payload + '.');
+			console.error('A junction cannot point into an archive, so extract the closure instead:');
+			console.error('  node tools/link-harness-runtime.mjs --asar "' + payload + '"');
 		}
 		process.exitCode = 1;
 		return;

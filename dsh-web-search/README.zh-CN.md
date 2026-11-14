@@ -81,12 +81,20 @@ node install.mjs --profile desktop
 node tools/link-dependency-root.mjs
 ```
 
-第 2 步不能省：profile 用 junction 把本包链进来，模块实际是从本目录跑的，它的裸导入
-（`@deepseek-ai/dsh-web`、`@deepseek-ai/schemastery`、`@deepseek-ai/dsh-credentials`……）靠向上查找本目录的
-`node_modules`。缺了它，插件在加载期就报 `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'`。
+这些裸导入（`@deepseek-ai/dsh-web`、`@deepseek-ai/schemastery`、`@deepseek-ai/dsh-credentials`、
+`@deepseek-ai/dsh-launch-environment`）由 harness 提供的**前提是本包在 `peerDependencies` 里声明了它们**：对 out-of-tree 的联接
+包，dsh 只有在“本目录到盘根之间某个 `package.json` 把它列为 peer”时，才把这个名字映射到 harness 安装目录里那份；否则退回
+Node 原生查找，向上找到本目录的 `node_modules` 却没有就报
+`ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'`。四个包在 `peerDependenciesMeta` 里都是 `optional`，
+所以 pnpm 一个都不装，运行时用的始终是 harness 那份（不会出现两份实例）。
 
-`link-dependency-root.mjs` 只建**一个** junction，所以 DSH 换安装路径或重装后重跑一次即可；它要求本插件的每个裸导入
-都以**可读的 package.json** 存在，悬空链接不算数（换装 DSH 后最典型的坏法）。
+第 2 步因此是**开发**需要（纯 Node 工具与测试从本目录解析），不是加载器需要。`link-dependency-root.mjs` 建一条指向已安装 DSH
+的 junction，要求那份安装是**解包**的（`resources/app/dsh/node_modules` 之类）；发行版桌面端是打包的 `resources/app.asar`，
+此时该工具会直接报出打包载荷，并让你改用它的抽取兄弟：
+
+```powershell
+node tools/link-harness-runtime.mjs    # 从 resources/app.asar 抽出闭包到 node_modules/
+```
 
 ### 卸载
 
@@ -336,11 +344,12 @@ Sources:
 - **凭据只从 `ctx.credentials` 与启动环境读。** 密钥不会进日志、不会进会话记录（记录里只有路由、耗时、费用、检索次数）。
 - **`web_fetch` 不受影响**，仍然走内置的 `http` 供应商。
 - **供应商端工具是一次完整的模型回合**：延迟实测 8–15 秒，费用按上面那张表计。
-- **`node_modules` 必须指向**同一个**已安装的 DSH。** profile 用 junction 把本包链进来，模块从本目录运行，
-  裸导入靠本目录的 `node_modules` 解决；DSH 换安装路径或重装后要重跑 `node tools/link-dependency-root.mjs`，
-  否则报 `ERR_MODULE_NOT_FOUND`。**不要**用 `tools/link-harness-runtime.mjs` 抽真目录来替代它：
-  它会拆掉 junction 再建普通目录，闭包来源一旦认错（例如机器上还装着别的 Electron 包）就会把 `@deepseek-ai/*`
-  抽成一堆无关文件，插件当场加载失败。
+- **四个 harness 导入靠 `peerDependencies` 声明才会解析。** dsh 0.2.2 只在本包 manifest 把它们列为 peer 时，才把 out-of-tree
+  包的裸 `@deepseek-ai/*` 名字映射到安装目录；删掉这些声明，即使 harness 里就有这个包，插件加载期照样报
+  `ERR_MODULE_NOT_FOUND`。版本对齐请改 `engines.dsh`，不要给 peer 写版本范围——运行时用的只有 harness 那一份。
+- 开发用的 `node_modules` 保持**可选**：需要给纯 Node 工具与测试用时，跑 `node tools/link-dependency-root.mjs`（解包安装）或
+  `node tools/link-harness-runtime.mjs`（打包 `resources/app.asar`）。后者会把 junction 换成真目录，之后想回到 junction 就重跑
+  `link-dependency-root.mjs`；机器上还装着别的 Electron 包时记得显式传 `--asar`。
 - 插件不修改任何原生包文件，卸载后原样恢复。
 
 ## 为什么不再写会话日志事件
@@ -450,13 +459,19 @@ node test/live-gateway.mjs    # 真实网关 + 真实 seam（会花一次搜索�
 **可读的 package.json** 存在（悬空链接不算数），然后建 `node_modules` 联接并当场验证解析。
 DSH 升级后重跑一次即可，联接跟着新安装走；也可以 `npm run link-root -- --json` 拿机器可读结果。
 
+发行版桌面端把闭包**打包**在 `resources/app.asar` 里，junction 伸不进去：此时 `link-root` 会直接报出这个 asar，改用抽取的那条：
+
+```powershell
+npm run link-runtime -- --asar "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\app.asar"
+```
+
 渲染测试会在 `DSH_CARD_TEST_MODULES`、`.card-test-modules/`（git 已忽略）、`$DSH_HOME/profiles/*`
 这几处依次找 `react` / `react-dom`；都找不到时这 13 项优雅跳过，其余测试照跑。
 
-> **不要**拿 `tools/link-harness-runtime.mjs` 替代 `link-root`：它按 `app.asar` 抽真目录，会先**拆掉**
-> `node_modules` 上的 junction。0.3.3 之前就踩过一次：它自动探测到了机器上另一个 Electron 包的 `app.asar`，
-> 抽出来的闭包里没有 `@deepseek-ai/*`，插件当场加载失败。只有当你手上确实有**这份** DSH 的 `app.asar`
-> 且明确要用真目录时才加 `--asar <path>`。
+> `tools/link-harness-runtime.mjs` 是**打包**安装的路线，不是解包安装上 `link-root` 的替代品：它按 `app.asar` 抽真目录，会先
+> **拆掉** `node_modules` 上的 junction。0.3.3 之前就踩过一次：它自动探测到了机器上另一个 Electron 包的 `app.asar`，
+> 抽出来的闭包里没有 `@deepseek-ai/*`，插件当场加载失败。所以要显式传 `--asar <path>`（或 `DSH_HARNESS_ASAR`），确保用的是
+> **这份** DSH 的载荷。
 
 | 文件 | 作用 |
 |---|---|
@@ -470,8 +485,8 @@ DSH 升级后重跑一次即可，联接跟着新安装走；也可以 `npm run 
 | `cordis.patch.yml` | bundle 层：改 `web.searchProvider` + 插入插件行。 |
 | `lib/client.js` | 浏览器半边：手写的加载器 bundle，注册 `plugins.row.config` 卡片。 |
 | `tools/repair-session-events.mjs` | 扫描/修复被自定义会话事件写坏的会话日志（补 `ignorable: true`，带备份与自检）。 |
-| `tools/link-dependency-root.mjs` | 给本目录建 `node_modules` junction 指向已安装 DSH（**推荐**的依赖闭包来源）。 |
-| `tools/link-harness-runtime.mjs` | 从 `app.asar` 抽真目录；只在明确需要时用（会拆掉 junction）。 |
+| `tools/link-dependency-root.mjs` | 给本目录建 `node_modules` junction 指向已安装 DSH；要求该安装是解包的（`resources/app/…`）。 |
+| `tools/link-harness-runtime.mjs` | 从打包的 `app.asar` 抽出闭包（发行版桌面端即此布局）；会拆掉 junction。 |
 | `install.mjs` | 装/卸到某个 profile。 |
 
 ## 标注为 DSH 插件

@@ -75,14 +75,21 @@ node install.mjs --profile desktop
 node tools/link-dependency-root.mjs
 ```
 
-Step 2 is not optional: the profile links this package in as a junction, so the module really runs from this directory and its
-bare imports (`@deepseek-ai/dsh-web`, `@deepseek-ai/schemastery`, `@deepseek-ai/dsh-credentials`, …) resolve by walking up to this
-directory's `node_modules`. Without it the plugin dies at load time with
-`ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'`.
+The harness supplies those bare imports (`@deepseek-ai/dsh-web`, `@deepseek-ai/schemastery`, `@deepseek-ai/dsh-credentials`,
+`@deepseek-ai/dsh-launch-environment`) **only because the package declares them in `peerDependencies`**. For a bundle linked out of
+tree, dsh maps such a name to the copy inside the harness installation when some ancestor `package.json` between this directory and
+the volume root lists it as a peer, and falls back to plain Node lookup otherwise — which walks up to this directory's `node_modules`
+and dies with `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'` when there is none. Every harness package is
+marked `optional` in `peerDependenciesMeta`, so pnpm installs nothing for them and the harness copy stays the single instance in use.
 
-`link-dependency-root.mjs` creates **one** junction, so re-running it after a DSH upgrade follows the new install; it requires every
-bare import of this plugin to exist as a **readable directory with a package.json** (a dangling link tree does not count — the
-classic breakage after reinstalling DSH elsewhere).
+Step 2 is therefore a **development** requirement (plain-Node tools and the test suite resolve from this directory), not a loader
+one. `link-dependency-root.mjs` junctions `node_modules` to the installed DSH and needs that install unpacked
+(`resources/app/dsh/node_modules` and friends); the released desktop app ships a packed `resources/app.asar`, where the tool now
+reports the packed payload and points at the extracting sibling:
+
+```powershell
+node tools/link-harness-runtime.mjs    # extracts the closure from resources/app.asar into node_modules/
+```
 
 ### Uninstall
 
@@ -321,11 +328,14 @@ The parser prefers links from that block (using the markdown label as the title)
 - **Credentials are read only from `ctx.credentials` and the launch environment.** Keys never reach logs or session records (records carry only route, duration, cost, and search count).
 - **`web_fetch` is unaffected** and still uses the built-in `http` provider.
 - **A provider-side tool is one full model turn**: measured latency 8–15 seconds, cost per the table above.
-- **`node_modules` must point at the same installed DSH.** The profile links this package in as a junction, the module runs from
-  this directory, and bare imports resolve through this directory's `node_modules`; after a DSH upgrade or reinstall, re-run
-  `node tools/link-dependency-root.mjs` or the plugin dies with `ERR_MODULE_NOT_FOUND`. Do **not** substitute
-  `tools/link-harness-runtime.mjs`: it removes the junction and builds real directories, and if it picks the wrong payload (say
-  another Electron app on the machine) it fills `node_modules` with unrelated files and the plugin fails to load.
+- **The four harness imports are declared as peers, and that is what makes them resolve.** dsh 0.2.2 maps a bare `@deepseek-ai/*`
+  name for an out-of-tree bundle only while the bundle's manifest lists it under `peerDependencies`; delete those entries and the
+  plugin dies at load time with `ERR_MODULE_NOT_FOUND` even though the harness ships the package. Keep `engines.dsh` in step instead
+  of pinning peer ranges — the harness copy is the only instance used, so there is no version to satisfy locally.
+- A development `node_modules` stays optional: run `node tools/link-dependency-root.mjs` (unpacked install) or
+  `node tools/link-harness-runtime.mjs` (packed `resources/app.asar`) when you need the closure for plain-Node tools and tests.
+  `link-harness-runtime.mjs` replaces the junction with real directories, so re-run `link-dependency-root.mjs` afterwards if you
+  prefer the junction; and pass `--asar` when another Electron app on the machine could be discovered first.
 - The plugin modifies no native package file, and uninstalling restores everything.
 
 ## Why no more session-log events
@@ -412,13 +422,21 @@ install roots (`%LOCALAPPDATA%\Programs`, `Program Files`, `D:\apps`, ...), prob
 verifies resolution on the spot. Re-run it after a DSH upgrade and the link follows the new install;
 `npm run link-root -- --json` gives a machine-readable summary.
 
+A released desktop app keeps that closure **packed** inside `resources/app.asar`, which no junction can reach. `link-root` says so
+and names the asar; use the extracting sibling instead, and pass `--asar` whenever another Electron app on the machine could be
+discovered first:
+
+```powershell
+npm run link-runtime -- --asar "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\app.asar"
+```
+
 The rendering tests look for `react` / `react-dom` in `DSH_CARD_TEST_MODULES`, `.card-test-modules/` (git-ignored),
 and `$DSH_HOME/profiles/*` in that order; when none has them, those 13 cases skip gracefully and the rest still run.
 
-> Do **not** substitute `tools/link-harness-runtime.mjs` for `link-root`: it extracts real directories from an `app.asar` and
-> **removes** the `node_modules` junction first. That bit us before 0.3.3 — it auto-discovered another Electron app's
-> `app.asar` on this machine, extracted a closure with no `@deepseek-ai/*` in it, and the plugin failed to load on the spot.
-> Only pass `--asar <path>` when you really have **this** DSH's asar and really want real directories.
+> `tools/link-harness-runtime.mjs` is the route for a **packed** install, not a substitute for `link-root` on an unpacked one: it
+> extracts real directories from an `app.asar` and **removes** the `node_modules` junction first. That bit us before 0.3.3 — it
+> auto-discovered another Electron app's `app.asar` on this machine, extracted a closure with no `@deepseek-ai/*` in it, and the
+> plugin failed to load on the spot. Always pass `--asar <path>` (or `DSH_HARNESS_ASAR`) so the payload is the one you mean.
 
 | File | Role |
 |---|---|
@@ -432,8 +450,8 @@ and `$DSH_HOME/profiles/*` in that order; when none has them, those 13 cases ski
 | `cordis.patch.yml` | The bundle layer: changes `web.searchProvider` and inserts the plugin row. |
 | `lib/client.js` | Browser half: the hand-written loader bundle registering the `plugins.row.config` card. |
 | `tools/repair-session-events.mjs` | Scan / repair session logs broken by custom session events (adds `ignorable: true`, with backup and self-check). |
-| `tools/link-dependency-root.mjs` | Junction `node_modules` to the installed DSH (the **recommended** closure source). |
-| `tools/link-harness-runtime.mjs` | Extract real directories from an `app.asar`; only when explicitly needed (it removes the junction). |
+| `tools/link-dependency-root.mjs` | Junction `node_modules` to the installed DSH; needs that install unpacked (`resources/app/…`). |
+| `tools/link-harness-runtime.mjs` | Extract the closure from a packed `app.asar` (the released desktop layout); removes the junction. |
 | `install.mjs` | Install / uninstall into a profile. |
 
 ## Marking it as a DSH plugin

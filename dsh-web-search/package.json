@@ -1,7 +1,7 @@
 {
   "name": "dsh-web-search",
-  "version": "0.3.3",
-  "description": "DSH plugin (dsh 0.2.x, tested on 0.2.2-rc.1): a ctx.web search provider that searches with the session's currently selected model and its gateway-native search tool (vercel:perplexity_search and friends), replacing the model-hardcoded built-in DeepSeek search provider.",
+  "version": "0.3.4",
+  "description": "DSH plugin (dsh 0.2.x, tested on 0.2.2-rc.3): a ctx.web search provider that searches with the session's currently selected model and its gateway-native search tool (vercel:perplexity_search and friends), replacing the model-hardcoded built-in DeepSeek search provider.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
@@ -61,9 +61,25 @@
     "url": "https://github.com/qujinting/dsh-web-search/issues"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-launch-environment": "*",
+    "@deepseek-ai/dsh-web": "*",
+    "@deepseek-ai/schemastery": "*",
     "react": "^18.2.0"
   },
   "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-credentials": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-launch-environment": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-web": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    },
     "react": {
       "optional": true
     }
