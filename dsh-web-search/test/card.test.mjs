@@ -54,39 +54,11 @@ function resolveFromHarness(specifier) {
 const React = resolveFromHarness('react');
 const renderToStaticMarkup = resolveFromHarness('react-dom/server')?.renderToStaticMarkup;
 
-/** The baseline module the web shell seeds that the card draws its UI from. */
-const PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives';
-
-/**
- * Stand in for the baseline primitives module. The shell always seeds the real
- * one; a stub keeps these tests hermetic (a browser-only React component tree
- * cannot be imported into Node) while still proving the card asks that module
- * for the parts it renders.
- * @param react - the module to build the stub components from.
- * @returns the stub exports.
- */
-function primitivesStub(react) {
-	if (react === undefined) return {};
-	const el = react.createElement;
-	return {
-		Tag: (props) => el('span', { 'data-test-tag': props.tone ?? '', className: props.className }, props.children),
-		Switch: (props) => el('button', {
-			type: 'button',
-			role: 'switch',
-			'aria-checked': props.checked === true,
-			disabled: props.disabled,
-			className: props.className,
-			onClick: () => props.onChange(props.checked !== true),
-		}, props.label),
-	};
-}
-
 /**
  * Load the bundle through the loader format it ships in.
  * @param react - the module the bundle's `require('react')` answers with.
- * @param primitives - an explicit primitives module, or the default stub.
  */
-async function loadClientBundle(react, primitives) {
+async function loadClientBundle(react) {
 	const source = readFileSync(join(process.cwd(), 'lib', 'client.js'), 'utf8');
 	let entry;
 	const previous = globalThis.window;
@@ -104,7 +76,8 @@ async function loadClientBundle(react, primitives) {
 	const exports = entry.factory((specifier) => {
 		required.push(specifier);
 		if (specifier === 'react') return react;
-		if (specifier === PRIMITIVES) return primitives ?? primitivesStub(react);
+		// Anything else - above all a Harness Client package - is a defect: the
+		// plugin guide forbids loading those as modules.
 		throw new Error('unexpected require: ' + specifier);
 	});
 	exports.__required = required;
@@ -200,7 +173,8 @@ test('a section that already matches the defaults writes nothing', async () => {
 test('the card draws its chrome from the deployment instead of inventing one', async () => {
 	const module = await loadClientBundle({});
 	const { CSS, CSS_ID, C } = module.__internals;
-	assert.ok(module.__required.includes(PRIMITIVES), 'the baseline primitives module is what the card draws its controls with');
+	assert.deepEqual(module.__required, ['react'], 'react is the only module the card takes from the baseline table');
+	assert.ok(module.__required.every((specifier) => !specifier.startsWith('@deepseek-ai/')), 'no Harness Client package is loaded as a module: their ids change without notice');
 	assert.equal(CSS_ID, 'dsh-web-search/card.css');
 	assert.ok(CSS.includes('var(--dsw-alias-'), 'the chrome reads deployment theme tokens');
 	assert.doesNotMatch(CSS, /#[0-9a-fA-F]{3,8}\b/u, 'no literal colour of its own');
@@ -245,7 +219,8 @@ test('the page view renders the fields and leaves the chrome to the page', async
 	const form = fakeForm({ tool: 'vercel:exa_search', enabled: true }, { tool: 'vercel:exa_search' });
 	const markup = renderToStaticMarkup(React.createElement(module.__internals.ModernCard, { view: 'page', form }));
 	assert.match(markup, /role="radiogroup"/u, 'the tool list is offered');
-	assert.match(markup, /role="switch"/u, 'the boolean field is the baseline switch');
+	assert.match(markup, /role="switch"/u, 'the boolean field is a switch');
+	assert.match(markup, /class="dswwsc-switchThumb"/u, 'the switch draws its own thumb instead of a Harness Client control');
 	assert.match(markup, /dsh-web-search-maxTokens/u, 'every field renders');
 	assert.doesNotMatch(markup, /dswwsc-header/u, 'the plugin page draws the title and crumb, not this card');
 	assert.doesNotMatch(markup, /aria-expanded/u, 'nothing is collapsed on the page the user explicitly opened');
@@ -290,6 +265,8 @@ test('the boolean field is a toggle row with the switch on the right', async (t)
 	assert.match(row, /class="dswwsc-label"[^>]*>启用本 provider/u, 'the row names the field');
 	assert.ok(row.indexOf('role="switch"') > row.indexOf('dswwsc-label'), 'the switch sits at the right end of the row');
 	assert.match(row, /aria-checked="true"/u, 'the switch shows the staged value');
+	assert.equal(module.__internals.C.switch, 'dswwsc-switch');
+	assert.equal(module.__internals.C.badge, 'dswwsc-badge');
 });
 
 test('the search tool is a single-choice radio list, not a select', async (t) => {
@@ -312,6 +289,6 @@ test('an overridden field is marked and offers a reset action', async (t) => {
 	const module = await loadClientBundle(React);
 	const form = fakeForm({ maxSources: 4 }, { maxSources: 4 });
 	const markup = renderToStaticMarkup(React.createElement(module.__internals.ModernCard, { view: 'page', form }));
-	assert.match(markup, /data-test-tag="neutral"/u, 'the override badge is the baseline Tag');
+	assert.match(markup, /class="dswwsc-badge"[^>]*>已覆盖/u, 'the override badge is the card\'s own control');
 	assert.match(markup, /恢复默认/u);
 });

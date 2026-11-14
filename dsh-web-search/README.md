@@ -272,9 +272,9 @@ The parser prefers links from that block (using the markdown label as the title)
     gateway request → source parsing. `deepseek-official` was registered at the same time (`include:web-search-deepseek` is
     also active) and no `WEB_PROVIDER_AMBIGUOUS` was raised, i.e. the bundle layer's `searchProvider: clinepass` wins.
   - Client half: `Slots.listSubTree` reports the occupant `dsh-web-search#dsh-web-search` in `plugins.row.config` with
-    `active: true` — the `window.__ModuleLoader__.load` factory ran, and `require('react')` plus
-    `require('@deepseek-ai/dsh-client-ui-primitives')` both resolved from the baseline module table; the key the page dispatches
-    (`rowConfigKey(pkg.name, row.rowId)`) is exactly the registered key.
+    `active: true` — the `window.__ModuleLoader__.load` factory ran and `require('react')` resolved from the baseline module
+    table; the key the page dispatches (`rowConfigKey(pkg.name, row.rowId)`) is exactly the registered key. That measurement
+    predates 0.3.5, which dropped the `@deepseek-ai/dsh-client-ui-primitives` require (see "The card's look…" below).
   - 0.2.2 added the **optional** `ready(llmProvider)` / `web.searchReady()` to the web seam, which `dsh-tool-web` uses to decide
     whether to hand `web_search` to the model for a step; 0.3.3 implements it (see "Limits and caveats").
 - **Real 0.2.x settings implementation (the 0.3.1 regression check, kept in 0.3.3)**: instead of booting the whole harness, the
@@ -379,7 +379,7 @@ Fields the card can change: `enabled`, `tool` (the four documented gateway searc
 
 The control shapes match the built-in cards: boolean fields are a **label-left, switch-right** row (the shape of the built-in Subagent card's toggle row, switch flush right); `tool` is a **radio list** rather than a `<select>` — every option visible at once, with the fieldset border / radius / padding / spacing following the built-in Subagent card's selection list (native radios, no custom drawing).
 
-The browser half is a **hand-written** `lib/client.js`, pinned to the loading format every plugin bundle uses (`window.__ModuleLoader__.load({ id, factory })`), so this repository has no build step and depends on no npm runtime package; it uses `react` and `@deepseek-ai/dsh-client-ui-primitives` from the base module table, and cross-plugin collaboration always goes through cordis services or slots (`ctx.slots` and `ctx.configForms`).
+The browser half is a **hand-written** `lib/client.js`, pinned to the loading format every plugin bundle uses (`window.__ModuleLoader__.load({ id, factory })`), so this repository has no build step and depends on no npm runtime package; `react` is the only module it takes from the base module table, and cross-plugin collaboration always goes through cordis services or slots (`ctx.slots` and `ctx.configForms`).
 
 > Changing the browser half's **content** only needs a page refresh (Ctrl+Shift+R if needed): the bundle is read from disk by the host every time, and in testing new styles and labels appeared in an already-running `dsh web`. Only **adding or removing a bundle itself** (a change to `dsh.profile.bundles` / the profile `package.json`) requires a restart.
 
@@ -389,18 +389,28 @@ DSH has **no** "declarative config card" interface. The slot contract is blunt: 
 
 The chrome the built-in cards share (`PluginCard` + the `card-form` field kit + their CSS modules) lives inside `@deepseek-ai/dsh-client-ui-settings-plugins`, whose client bundle exports only `apply` and `inject` (`lib/client.js` ends with exactly `exports.apply` / `exports.inject`), so **a package outside the repository cannot import it**.
 
-What is genuinely shared is the base module table the shell itself establishes, `PLATFORM_MODULES`:
+The base module table the shell itself establishes is `PLATFORM_MODULES`:
 
 `react`, `react/jsx-runtime`, `react-dom`, `react-dom/client`, `@deepseek-ai/cordis`,
 `@deepseek-ai/dsh-client-store`, `@deepseek-ai/dsh-client-ui-slots`,
-**`@deepseek-ai/dsh-client-ui-primitives`**, `@deepseek-ai/dsh-client-ui-dockkit`
+`@deepseek-ai/dsh-client-ui-primitives`, `@deepseek-ai/dsh-client-ui-dockkit`
 
-So the card:
+**`react` is the only entry this bundle takes.** Loading a Harness Client package as a module is exactly what dsh's own plugin guide
+tells plugins not to do — those ids change without notice, and a throwing component blanks the slot entry — so the two controls that
+carry behaviour are drawn here:
 
-1. `require('@deepseek-ai/dsh-client-ui-primitives')` — the **same instance** the built-in cards use, to render the override `Tag` and the boolean `Switch`;
-2. Writes every other piece of chrome with the host's theme tokens (`--dsw-alias-*`), one rule per built-in rule (values taken from `PluginCard.module.css` / `fields.module.css` at that version, not eyeballed), injected as `style[data-plugin-css]` with selectors scoped to `.dswwsc-*`. The payoff: the card follows theme and light/dark switches because every colour is a token — the stylesheet contains **no hex or rgba literal** (a unit test asserts this).
+1. the "overridden" badge and the boolean switch, styled from the shipped **Tag** and **Switch** rules: geometry, colours, and the
+   checked/unchecked thumb rules copied value for value, and the same `<button role="switch" aria-checked>` shape, so keyboard and
+   assistive technology see the control they already know;
+2. every other piece of chrome with the host's theme tokens (`--dsw-alias-*`), one rule per built-in rule (values taken from
+   `PluginCard.module.css` / `fields.module.css` at that version, not eyeballed), injected as `style[data-plugin-css]` with
+   selectors scoped to `.dswwsc-*`. The payoff: the card follows theme and light/dark switches because every colour is a token —
+   the stylesheet contains **no hex or rgba literal**, and a unit test asserts both that property and that nothing but `react` is
+   required.
 
-> Two routes were explicitly rejected: importing that internal package (it has no export), and borrowing its already-injected hashed class names (`.YyYd_a_card` and friends), which would go silently dead after any host refactor.
+> Two routes were rejected in 0.2.0 and stay rejected: importing that internal package (it has no export), and borrowing its
+> already-injected hashed class names (`.YyYd_a_card` and friends), which would go silently dead after any host refactor.
+> `require('@deepseek-ai/dsh-client-ui-primitives')` was the third, and 0.3.5 removed it.
 
 ## Development
 

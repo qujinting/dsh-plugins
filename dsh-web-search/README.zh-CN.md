@@ -288,9 +288,9 @@ Sources:
     （`include:web-search-deepseek` 同样 active），没有撞 `WEB_PROVIDER_AMBIGUOUS`，即 bundle 层的
     `searchProvider: clinepass` 覆盖生效。
   - client 半边：`Slots.listSubTree` 显示 `plugins.row.config` 里的 occupant `dsh-web-search#dsh-web-search`、
-    `active: true`——说明 `window.__ModuleLoader__.load` 工厂执行、`require('react')` 与
-    `require('@deepseek-ai/dsh-client-ui-primitives')` 都从基座模块表解析成功；页面派发用的 key
-    （`rowConfigKey(pkg.name, row.rowId)`) 与注册 key 完全相同。
+    `active: true`——说明 `window.__ModuleLoader__.load` 工厂执行、`require('react')` 从基座模块表解析成功；页面派发用的 key
+    （`rowConfigKey(pkg.name, row.rowId)`) 与注册 key 完全相同。这条测量早于 0.3.5，0.3.5 已去掉
+    `@deepseek-ai/dsh-client-ui-primitives` 的 require（见下面《卡片的外观来自宿主》）。
   - 0.2.2 的 web seam 新增了**可选**的 `ready(llmProvider)` / `web.searchReady()`，`dsh-tool-web` 用它决定
     这一步要不要把 `web_search` 交给模型；0.3.3 实现了它（见《限制与注意事项》）。
 - **真实 0.2.x settings 实现（0.3.1 的回归验证，0.3.3 保留）**：不启动整个 harness，而是直接把**真实的**
@@ -404,8 +404,8 @@ node tools/repair-session-events.mjs repair --session 80bad975-cea1-48af-b509-f2
 Subagent 卡的选择列表来（原生 radio，不做自定义绘制）。
 
 浏览器半边是**手写的** `lib/client.js`，按所有插件 bundle 的加载格式（`window.__ModuleLoader__.load({ id, factory })`）
-写死，所以本仓库没有构建步骤、也不依赖 npm 上的任何运行时包；它用基座模块表里的 `react` 与
-`@deepseek-ai/dsh-client-ui-primitives`，跨插件协作一律走 cordis 服务或槽位（`ctx.slots` 与 `ctx.configForms`）。
+写死，所以本仓库没有构建步骤、也不依赖 npm 上的任何运行时包；基座模块表里它只取 `react` 一个，
+跨插件协作一律走 cordis 服务或槽位（`ctx.slots` 与 `ctx.configForms`）。
 
 > 改了浏览器半边的**内容**只要刷新页面（必要时 Ctrl+Shift+R）就生效：bundle 由 Host 每次从磁盘读，
 > 实测改完在已运行的 `dsh web` 里直接看到新样式与新文案。只有**增删 bundle 本身**
@@ -426,19 +426,20 @@ namespace **什么都不渲染**（`tab-store` 的原话：*A served namespace n
 
 `react`、`react/jsx-runtime`、`react-dom`、`react-dom/client`、`@deepseek-ai/cordis`、
 `@deepseek-ai/dsh-client-store`、`@deepseek-ai/dsh-client-ui-slots`、
-**`@deepseek-ai/dsh-client-ui-primitives`**、`@deepseek-ai/dsh-client-ui-dockkit`
+`@deepseek-ai/dsh-client-ui-primitives`、`@deepseek-ai/dsh-client-ui-dockkit`
 
-于是这张卡的做法是：
+**这张卡只取其中 `react` 一个。** 把 Harness Client 包当模块 import 正是 dsh 插件指南明确不让做的事——那些 id 会无预告变化，
+而且一个抛异常的组件会把整个 slot entry 变成空白——所以两个真正带行为的控件改成自己画：
 
-1. `require('@deepseek-ai/dsh-client-ui-primitives')` —— 拿到的是内置卡片用的**同一个实例**，用它渲染
-   被覆盖字段的 `Tag` 与布尔字段的 `Switch`；
+1. 「已覆盖」徽标与布尔开关，样式照内置 **Tag** 与 **Switch** 的规则来：几何、颜色、选中/未选中时的滑块规则逐值照抄，
+   连结构都是同一个 `<button role="switch" aria-checked>`，键盘与读屏看到的就是熟悉的那个控件；
 2. 其余 chrome 全部用宿主的主题 token（`--dsw-alias-*`）写，规则与内置卡片**一条对一条**（数值取自带内的
    `PluginCard.module.css` / `fields.module.css`，不是目测），并以 `style[data-plugin-css]` 注入、域名限定在 `.dswwsc-*`。
    好处是换主题、切深浅色时卡片跟着变：颜色全是 token，样式表里**没有任何十六进制或 rgba 字面量**
    （单元测试对这条做断言）。
 
-> 明确没有采用的两条路：直接 import 那个内部包（导不出来），以及借用它已注入的哈希类名（`.YyYd_a_card` 之类）——
-> 后者在任何一次宿主重构后都会静默失效。
+> 明确没有采用的三条路：直接 import 那个内部包（导不出来）；借用它已注入的哈希类名（`.YyYd_a_card` 之类）——
+> 后者在任何一次宿主重构后都会静默失效；以及 `require('@deepseek-ai/dsh-client-ui-primitives')`——0.3.5 已去掉。
 
 ## 开发
 

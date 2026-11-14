@@ -13,13 +13,13 @@
  *
  * There is no declarative card contract to opt into: the slot documentation is
  * explicit that a card draws its own internals and the page only decides which
- * keys to dispatch. What IS shared is the baseline module table the web shell
- * builds (PLATFORM_MODULES): react, cordis, the client store, the slots service,
- * the dock kit, and @deepseek-ai/dsh-client-ui-primitives. This bundle requires
- * primitives from that table - the same instance the built-in cards render - for
- * the two controls that carry behaviour (the Tag and the Switch), and writes the
- * remaining chrome from the deployment's own theme tokens (--dsw-alias-*),
- * following the shipped card and field rules one for one.
+ * keys to dispatch. `react` is the only module this bundle takes from the
+ * baseline table, because the plugin guide forbids loading a Harness Client
+ * package as a module (those ids change without notice, and a throwing component
+ * blanks the slot entry) - so the two controls that carry behaviour, the
+ * "overridden" badge and the boolean switch, are drawn here from the deployment's
+ * own theme tokens (--dsw-alias-*), with the shipped Tag and Switch geometry and
+ * colours copied rule for rule.
  *
  * The page owns the title, icon, and crumb, so the card renders only the fields
  * and the save row, and reports accept-vs-reject from `mutate` as a boolean.
@@ -36,9 +36,6 @@ window.__ModuleLoader__.load({
 		Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
 
 		const React = require('react');
-		// The shell's baseline module table seeds this package, so this resolves to
-		// the very instance the built-in settings cards render with.
-		const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
 
 		/** This package's name: what the plugin page keys a bundle by. */
 		const BUNDLE = 'dsh-web-search';
@@ -99,6 +96,19 @@ window.__ModuleLoader__.load({
 			'.dswwsc-head{align-items:center;gap:8px;display:flex}',
 			'.dswwsc-label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:500;line-height:1.5}',
 			'.dswwsc-badges{align-items:center;gap:8px;display:inline-flex}',
+			// The "overridden" badge: the shipped Tag's neutral tone, values copied
+			// from its stylesheet (radius 999px, 1px 8px padding, 11px/17px, 500).
+			'.dswwsc-badge{align-items:center;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;white-space:nowrap;display:inline-flex}',
+			// The shipped Switch, rule for rule: 36x20 box, 2px padding, 999px radius,
+			// border-l3 track that turns brand-primary when checked, thumb 16px
+			// translating 16px, thumb colours from the shipped thumb rules.
+			'.dswwsc-switch{box-sizing:border-box;background:var(--dsw-alias-border-l3);border:0;border-radius:999px;position:relative;flex:0 0 auto;width:36px;height:20px;padding:2px;cursor:pointer;display:inline-block}',
+			'.dswwsc-switch[aria-checked=true]{background:var(--dsw-alias-brand-primary)}',
+			'.dswwsc-switch:disabled{cursor:default;opacity:.5}',
+			'.dswwsc-switch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
+			'.dswwsc-switchThumb{background:var(--dsw-alias-label-primary-foreground);border-radius:50%;width:16px;height:16px;transition:transform .12s ease;display:block}',
+			'.dswwsc-switch[aria-checked=false] .dswwsc-switchThumb{background:var(--dsw-alias-switch-thumb)}',
+			'.dswwsc-switch[aria-checked=true] .dswwsc-switchThumb{transform:translate(16px)}',
 			'.dswwsc-reset{font:inherit;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;padding:0;font-size:12px;line-height:1.5}',
 			'.dswwsc-reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}',
 			'.dswwsc-reset:disabled{cursor:default}',
@@ -137,6 +147,9 @@ window.__ModuleLoader__.load({
 			head: 'dswwsc-head',
 			label: 'dswwsc-label',
 			badges: 'dswwsc-badges',
+			badge: 'dswwsc-badge',
+			switch: 'dswwsc-switch',
+			switchThumb: 'dswwsc-switchThumb',
 			reset: 'dswwsc-reset',
 			toggleRow: 'dswwsc-toggleRow',
 			choices: 'dswwsc-choices',
@@ -215,8 +228,9 @@ window.__ModuleLoader__.load({
 		/**
 		 * One labelled control, laid out the way the shipped cards lay theirs out.
 		 *
-		 * A boolean is a toggle row - its label on the left, the deployment's own
-		 * Switch on the right - matching the shipped subagent card's toggle row. A
+		 * A boolean is a toggle row - its label on the left, a switch on the right
+		 * (this card's own, styled from the shipped Switch's rules) - matching the
+		 * shipped subagent card's toggle row. A
 		 * one-of-many choice is a radio list - the shipped subagent card's shape for
 		 * a list of options, down to the boxed group with its 8px radius and 6px
 		 * rows - because a select hides every option but one behind a click. Text and
@@ -235,21 +249,25 @@ window.__ModuleLoader__.load({
 			const labelId = id + '-label';
 			const value = draft[field.key];
 			const badges = overridden ? React.createElement('span', { className: C.badges },
-				React.createElement(primitives.Tag, { tone: 'neutral' }, '已覆盖'),
+				React.createElement('span', { className: C.badge }, '已覆盖'),
 				React.createElement('button', { type: 'button', className: C.reset, disabled, onClick: () => onReset(field) }, '恢复默认')) : null;
 			if (field.kind === 'boolean') {
-				// The deployment's own switch, the control the shipped cards use for
-				// booleans; its label prop is what names it to assistive tech.
+				// The shipped switch shape, drawn here: label left, the toggle right.
+				// A button with role="switch" keeps it keyboard- and screen-reader
+				// correct (Space/Enter activate it) and names itself with aria-label.
 				return React.createElement('div', { className: C.field, key: field.key },
 					React.createElement('div', { className: C.toggleRow },
 						React.createElement('span', { className: C.label, id: labelId }, field.label),
 						badges,
-						React.createElement(primitives.Switch, {
-							checked: value === true,
-							label: field.label,
+						React.createElement('button', {
+							type: 'button',
+							role: 'switch',
+							className: C.switch,
+							'aria-checked': value === true,
+							'aria-label': field.label,
 							disabled,
-							onChange: (next) => onEdit(field, next),
-						})),
+							onClick: () => onEdit(field, value !== true),
+						}, React.createElement('span', { className: C.switchThumb }))),
 					React.createElement('p', { className: C.hint }, field.hint));
 			}
 			let control;
