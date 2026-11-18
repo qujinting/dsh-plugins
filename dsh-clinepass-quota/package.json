@@ -1,0 +1,55 @@
+{
+  "name": "dsh-clinepass-quota",
+  "version": "0.1.0",
+  "description": "DSH 插件：用 Cline API Key 查询 ClinePass 订阅的剩余额度（5 小时 / 周 / 月三档滚动配额 + 按量付费余额），提供设置页、会话标题栏徽章与 clinepass_quota 工具。",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "lib/client.js",
+    "tools/*.mjs",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node --check src/index.js && node --check lib/client.js",
+    "test": "node --test test/api.test.mjs test/store.test.mjs test/service.test.mjs test/plugin.test.mjs test/client.test.mjs"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "clinepass",
+    "cline",
+    "quota",
+    "usage",
+    "plugin"
+  ],
+  "author": "qujinting",
+  "license": "MIT"
+}

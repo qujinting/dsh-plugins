@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "ClinePass quota",
+    "description": "Queries the remaining ClinePass subscription quota with a Cline API key: the 5-hour, weekly and monthly windows, their reset times, and the separate pay-as-you-go credit balance. Adds a Settings page, a session header badge, and the clinepass_quota tool for the model.",
+    "detail": "docs/DETAIL.md"
+  }
+}

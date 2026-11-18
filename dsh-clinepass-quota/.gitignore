@@ -1,0 +1,15 @@
+# 插件自己的数据目录：credentials.json 里存着 Cline API Key，永远不入库。
+data/
+
+node_modules/
+
+# 一次性探针 / 中间产物。
+_probe/
+.dsh/
+
+# 编辑器与系统噪音。
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

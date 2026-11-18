@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "ClinePass 额度",
+    "description": "用 Cline API Key 查询 ClinePass 订阅的剩余额度：5 小时滚动 / 周 / 月三档配额与重置时间，以及独立的按量付费余额。提供设置页、会话标题栏徽章，以及给模型用的 clinepass_quota 工具。",
+    "detail": "docs/DETAIL.md"
+  }
+}
